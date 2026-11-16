@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="fr">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AutoLoc · Console de gestion</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+
+<!-- Connexion -->
+<section id="login" class="login" hidden>
+    <div class="login-card">
+        <div class="brand brand-lg">
+            <span class="brand-mark">AL</span>
+            <span class="brand-name">AutoLoc</span>
+        </div>
+        <h1>Console de gestion</h1>
+        <p class="muted">Connectez-vous pour gérer la flotte, les clients et les locations.</p>
+        <form id="login-form" novalidate>
+            <label class="field">
+                <span>Identifiant</span>
+                <input name="username" autocomplete="username" required>
+            </label>
+            <label class="field">
+                <span>Mot de passe</span>
+                <input name="password" type="password" autocomplete="current-password" required>
+            </label>
+            <p id="login-error" class="form-error" hidden></p>
+            <button class="btn btn-primary btn-block" type="submit">Se connecter</button>
+        </form>
+        <div class="login-hint">
+            <div><span class="kbd">admin</span> / <span class="kbd">admin123</span> Administration complète</div>
+            <div><span class="kbd">student</span> / <span class="kbd">student123</span> Consultation seule</div>
+        </div>
+    </div>
+</section>
+
+<!-- Application -->
+<div id="app" class="shell" hidden>
+    <aside class="sidebar" id="sidebar">
+        <div class="brand">
+            <span class="brand-mark">AL</span>
+            <span class="brand-name">AutoLoc</span>
+        </div>
+        <nav id="nav" class="nav"></nav>
+        <div class="sidebar-foot">API Spring Boot · MySQL</div>
+    </aside>
+    <div class="scrim" id="scrim"></div>
+
+    <div class="main">
+        <header class="topbar">
+            <button class="btn btn-ghost menu-btn" id="menu-btn" type="button" aria-label="Menu">Menu</button>
+            <div class="topbar-title">
+                <div class="crumb" id="crumb"></div>
+                <h1 id="page-title"></h1>
+            </div>
+            <div class="user">
+                <div class="user-meta">
+                    <span class="user-name" id="user-name"></span>
+                    <span class="badge" id="user-role"></span>
+                </div>
+                <button class="btn btn-ghost" id="logout" type="button">Se déconnecter</button>
+            </div>
+        </header>
+        <main id="view" class="view"></main>
+    </div>
+</div>
+
+<!-- Panneau latéral (formulaire) -->
+<div class="drawer-layer" id="drawer-layer" hidden>
+    <div class="overlay" data-close></div>
+    <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+        <header class="drawer-head">
+            <div>
+                <div class="crumb" id="drawer-kicker"></div>
+                <h2 id="drawer-title"></h2>
+            </div>
+            <button class="btn btn-ghost" type="button" data-close>Fermer</button>
+        </header>
+        <form id="drawer-form" class="drawer-body" novalidate></form>
+        <footer class="drawer-foot" id="drawer-foot"></footer>
+    </aside>
+</div>
+
+<!-- Confirmation -->
+<div class="modal-layer" id="modal-layer" hidden>
+    <div class="overlay" data-cancel></div>
+    <div class="modal" role="alertdialog" aria-modal="true" aria-labelledby="modal-title">
+        <h2 id="modal-title"></h2>
+        <p id="modal-text" class="muted"></p>
+        <div class="modal-actions">
+            <button class="btn btn-ghost" type="button" data-cancel>Annuler</button>
+            <button class="btn btn-danger" type="button" id="modal-confirm">Supprimer</button>
+        </div>
+    </div>
+</div>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

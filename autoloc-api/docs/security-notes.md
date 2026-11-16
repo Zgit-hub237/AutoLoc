@@ -99,8 +99,11 @@ lisible en un seul fichier.
 
 - **HTTP Basic** transmet les identifiants à chaque requête, simplement encodés en Base64 (pas chiffrés) :
   en production, il faut impérativement **HTTPS**, et on préfère souvent des jetons (JWT, OAuth2).
-- **CSRF** : la protection CSRF reste active par défaut. Elle ne gêne pas ces endpoints en `GET`, mais
-  les futurs `POST`/`PUT`/`DELETE` d'une API sans état devront en tenir compte. Pour une application
-  utilisée depuis un navigateur avec session, il faut revoir la protection CSRF avant de la désactiver.
+- **CSRF** : depuis la console web (bonus), l'API est **sans état** (`SessionCreationPolicy.STATELESS`) et le
+  jeton CSRF est ignoré sur `/api/**`. C'est possible parce qu'aucun cookie de session n'est émis : les
+  identifiants sont ajoutés explicitement par le code à chaque requête, un site tiers ne peut donc pas les
+  faire envoyer à la place de l'utilisateur. Une application à **session** (cookie) devrait garder le CSRF.
+  Voir [console-web.md](console-web.md) pour les règles ajoutées (fichiers statiques publics,
+  `GET /api/console/**` pour USER et ADMIN, écritures réservées à ADMIN).
 - Une fois Spring Security ajouté, **toutes** les routes sont protégées par défaut (« secure by default ») :
   chaque nouvelle route publique doit être ouverte explicitement.
