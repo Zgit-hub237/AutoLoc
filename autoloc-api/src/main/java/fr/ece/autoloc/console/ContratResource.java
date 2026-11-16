@@ -49,10 +49,14 @@ public class ContratResource extends CrudResource<Contrat, ContratResource.Contr
     @Override
     protected void apply(ContratDto dto, Contrat c) {
         c.setDateSignature(dto.dateSignature() == null ? LocalDate.now() : dto.dateSignature());
-        c.setMontantTotal(required(dto.montantTotal(), "montant total"));
+        c.setMontantTotal(positive(dto.montantTotal(), "montant total"));
         c.setValide(Boolean.TRUE.equals(dto.valide()));
         Reservation reservation = reference(reservationRepository,
                 required(dto.reservationId(), "réservation"), "Réservation");
+        if (reservation.getStatut() == fr.ece.autoloc.domain.StatutReservation.ANNULEE && Boolean.TRUE.equals(dto.valide())) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Un contrat ne peut pas être validé pour une réservation annulée");
+        }
         c.setReservation(reservation);          // owning side: writes contrat.reservation_id_reservation
         reservation.setContrat(c);              // inverse side kept consistent in memory
     }

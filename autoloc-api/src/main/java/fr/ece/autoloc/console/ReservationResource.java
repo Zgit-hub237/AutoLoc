@@ -7,7 +7,9 @@ import fr.ece.autoloc.domain.StatutReservation;
 import fr.ece.autoloc.domain.Vehicule;
 import fr.ece.autoloc.repository.ClientRepository;
 import fr.ece.autoloc.repository.ReservationRepository;
+import fr.ece.autoloc.repository.MaintenanceRepository;
 import fr.ece.autoloc.repository.VehiculeRepository;
+import fr.ece.autoloc.service.FlotteService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -27,12 +29,19 @@ public class ReservationResource extends CrudResource<Reservation, ReservationRe
 
     private final ClientRepository clientRepository;
     private final VehiculeRepository vehiculeRepository;
+    private final ReservationRepository reservationRepository;
+    private final MaintenanceRepository maintenanceRepository;
+    private final FlotteService flotteService;
 
     public ReservationResource(ReservationRepository repository, ClientRepository clientRepository,
-                               VehiculeRepository vehiculeRepository) {
+                               VehiculeRepository vehiculeRepository, MaintenanceRepository maintenanceRepository,
+                               FlotteService flotteService) {
         super(repository, "Réservation");
         this.clientRepository = clientRepository;
         this.vehiculeRepository = vehiculeRepository;
+        this.reservationRepository = repository;
+        this.maintenanceRepository = maintenanceRepository;
+        this.flotteService = flotteService;
     }
 
     static String label(Reservation r) {
@@ -68,5 +77,32 @@ public class ReservationResource extends CrudResource<Reservation, ReservationRe
         r.setStatut(dto.statut() == null ? StatutReservation.EN_ATTENTE : dto.statut());
         r.setClient(reference(clientRepository, required(dto.clientId(), "client"), "Client"));
         r.setVehicule(reference(vehiculeRepository, required(dto.vehiculeId(), "véhicule"), "Véhicule"));
+
+        // Same rules as the customer space: an active reservation needs a free vehicle
+        boolean active = r.getStatut() == StatutReservation.EN_ATTENTE || r.getStatut() == StatutReservation.CONFIRMEE;
+        Long vehiculeId = r.getVehicule().getIdVehicule();
+        long exclure = r.getIdReservation() == null ? 0L : r.getIdReservation();
+        if (active && reservationRepository.existsChevauchement(vehiculeId, debut, fin, exclure)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ce véhicule est déjà réservé sur une partie de ces dates");
+        }
+        if (active && maintenanceRepository.existsChevauchement(vehiculeId, debut, fin)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ce véhicule est en maintenance sur une partie de ces dates");
+        }
+        // A cancelled reservation keeps its contract for the history, but the contract is no longer valid
+        if (r.getStatut() == StatutReservation.ANNULEE && r.getContrat() != null) {
+            r.getContrat().setValide(false);
+        }
+    }
+
+    @Override
+    protected void afterWrite(Reservation r) {
+        flotteService.synchroniserTout();   // old and new vehicle if it was changed
+    }
+
+    @Override
+    protected void afterDelete(Reservation r) {
+        flotteService.synchroniserTout();
     }
 }

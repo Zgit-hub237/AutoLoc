@@ -7,7 +7,6 @@ import fr.ece.autoloc.domain.Equipement;
 import fr.ece.autoloc.domain.Paiement;
 import fr.ece.autoloc.domain.Reservation;
 import fr.ece.autoloc.domain.StatutReservation;
-import fr.ece.autoloc.domain.StatutVehicule;
 import fr.ece.autoloc.domain.Vehicule;
 import fr.ece.autoloc.espaceclient.EspaceClientDtos.InscriptionRequest;
 import fr.ece.autoloc.espaceclient.EspaceClientDtos.Location;
@@ -16,8 +15,10 @@ import fr.ece.autoloc.espaceclient.EspaceClientDtos.Profil;
 import fr.ece.autoloc.espaceclient.EspaceClientDtos.ProfilUpdate;
 import fr.ece.autoloc.espaceclient.EspaceClientDtos.VehiculeOffre;
 import fr.ece.autoloc.repository.ClientRepository;
+import fr.ece.autoloc.repository.MaintenanceRepository;
 import fr.ece.autoloc.repository.ReservationRepository;
 import fr.ece.autoloc.repository.VehiculeRepository;
+import fr.ece.autoloc.service.FlotteService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -46,6 +47,8 @@ public class EspaceClientService {
     private final ClientRepository clientRepository;
     private final VehiculeRepository vehiculeRepository;
     private final ReservationRepository reservationRepository;
+    private final MaintenanceRepository maintenanceRepository;
+    private final FlotteService flotteService;
     private final PasswordEncoder passwordEncoder;
 
     // ------------------------------------------------------------------ Account
@@ -93,7 +96,7 @@ public class EspaceClientService {
 
     // ------------------------------------------------------------------ Catalogue
 
-    /** Vehicles that can be rented for the period (not in maintenance, no overlapping reservation). */
+    /** Vehicles that can be rented for the period: no maintenance and no active reservation overlapping it. */
     @Transactional(readOnly = true)
     public List<VehiculeOffre> vehiculesDisponibles(LocalDate debut, LocalDate fin, CategorieVehicule categorie) {
         boolean periode = debut != null && fin != null;
@@ -102,10 +105,8 @@ public class EspaceClientService {
         }
         Long nbJours = periode ? nbJours(debut, fin) : null;
         return vehiculeRepository.findAll().stream()
-                .filter(v -> v.getStatut() != StatutVehicule.MAINTENANCE)
                 .filter(v -> categorie == null || v.getCategorie() == categorie)
-                .filter(v -> !periode || !reservationRepository.existsChevauchement(
-                        v.getIdVehicule(), debut, fin, StatutReservation.ANNULEE))
+                .filter(v -> disponible(v, periode ? debut : LocalDate.now(), periode ? fin : LocalDate.now()))
                 .sorted(Comparator.comparing(Vehicule::getTarifJournalier))
                 .map(v -> new VehiculeOffre(v.getIdVehicule(), v.getMarque(), v.getModele(), v.getImmatriculation(),
                         v.getCategorie(),
@@ -134,8 +135,7 @@ public class EspaceClientService {
         }
         Vehicule vehicule = vehiculeRepository.findById(required(request.vehiculeId(), "véhicule"))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Véhicule introuvable"));
-        if (vehicule.getStatut() == StatutVehicule.MAINTENANCE
-                || reservationRepository.existsChevauchement(vehicule.getIdVehicule(), debut, fin, StatutReservation.ANNULEE)) {
+        if (!disponible(vehicule, debut, fin)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ce véhicule n'est plus disponible sur ces dates");
         }
 
@@ -161,7 +161,9 @@ public class EspaceClientService {
         paiement.setModePaiement(request.modePaiement());
         contrat.ajouterPaiement(paiement);       // keeps both sides of Contrat <-> Paiement in sync
 
-        return toLocation(reservationRepository.save(reservation));
+        Reservation saved = reservationRepository.save(reservation);
+        flotteService.synchroniser(vehicule);    // LOUE right away if the rental starts today
+        return toLocation(saved);
     }
 
     @Transactional(readOnly = true)
@@ -183,10 +185,17 @@ public class EspaceClientService {
         if (reservation.getContrat() != null) {
             reservation.getContrat().setValide(false);
         }
+        flotteService.synchroniser(reservation.getVehicule());
         return toLocation(reservation);
     }
 
     // ------------------------------------------------------------------ Helpers
+
+    /** Free over the whole period: no maintenance and no active (pending or confirmed) reservation. */
+    private boolean disponible(Vehicule v, LocalDate debut, LocalDate fin) {
+        return !maintenanceRepository.existsChevauchement(v.getIdVehicule(), debut, fin)
+                && !reservationRepository.existsChevauchement(v.getIdVehicule(), debut, fin, 0L);
+    }
 
     private Client client(String email) {
         return clientRepository.findByEmailIgnoreCase(email)

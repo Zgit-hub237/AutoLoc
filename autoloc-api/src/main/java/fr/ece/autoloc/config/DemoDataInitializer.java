@@ -2,9 +2,13 @@ package fr.ece.autoloc.config;
 
 import fr.ece.autoloc.domain.CategorieVehicule;
 import fr.ece.autoloc.domain.Client;
+import fr.ece.autoloc.domain.Employe;
+import fr.ece.autoloc.domain.RoleEmploye;
 import fr.ece.autoloc.domain.StatutVehicule;
 import fr.ece.autoloc.domain.Vehicule;
+import fr.ece.autoloc.repository.AgenceRepository;
 import fr.ece.autoloc.repository.ClientRepository;
+import fr.ece.autoloc.repository.EmployeRepository;
 import fr.ece.autoloc.repository.VehiculeRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,8 +22,8 @@ import java.time.LocalDate;
 import java.util.List;
 
 /**
- * Inserts demo data at startup in the dev profile: three vehicles and one customer account
- * for the online customer space. Idempotent: existing rows are skipped.
+ * Inserts demo data at startup in the dev profile: three vehicles, one customer account and two employee
+ * accounts (one MANAGER, one AGENT) for the agency console. Idempotent: existing rows are skipped.
  */
 @Slf4j
 @Component
@@ -31,6 +35,8 @@ public class DemoDataInitializer implements CommandLineRunner {
 
     private final VehiculeRepository vehiculeRepository;
     private final ClientRepository clientRepository;
+    private final EmployeRepository employeRepository;
+    private final AgenceRepository agenceRepository;
     private final PasswordEncoder passwordEncoder;
 
     @Override
@@ -59,6 +65,25 @@ public class DemoDataInitializer implements CommandLineRunner {
             clientRepository.save(client);
             log.info("Demo customer account created: {}", DEMO_CLIENT_EMAIL);
         }
+
+        employe("Julie", "Moreau", RoleEmploye.MANAGER, "manager", "manager123");
+        employe("Hugo", "Petit", RoleEmploye.AGENT, "agent", "agent123");
+    }
+
+    /** Local demo employee account; the rights come from the role (see SecurityConfig). */
+    private void employe(String prenom, String nom, RoleEmploye role, String login, String motDePasse) {
+        if (employeRepository.findByLoginIgnoreCase(login).isPresent()) {
+            return;
+        }
+        Employe employe = new Employe();
+        employe.setPrenom(prenom);
+        employe.setNom(nom);
+        employe.setRole(role);
+        employe.setAgence(agenceRepository.findAll().stream().findFirst().orElse(null));
+        employe.setLogin(login);
+        employe.setMotDePasse(passwordEncoder.encode(motDePasse));   // local demo account only
+        employeRepository.save(employe);
+        log.info("Demo employee account created: {} ({})", login, role);
     }
 
     private Vehicule vehicule(String immatriculation, String marque, String modele,

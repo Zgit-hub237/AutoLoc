@@ -45,6 +45,14 @@ public abstract class CrudResource<E, D> {
     protected void beforeDelete(E entity) {
     }
 
+    /** Hook called after a creation or a modification has been written (e.g. to recompute statuses). */
+    protected void afterWrite(E entity) {
+    }
+
+    /** Hook called after a deletion has been written. */
+    protected void afterDelete(E entity) {
+    }
+
     @GetMapping
     @Transactional(readOnly = true)
     public List<D> list() {
@@ -63,6 +71,7 @@ public abstract class CrudResource<E, D> {
         E entity = newEntity();
         apply(dto, entity);
         E saved = repository.saveAndFlush(entity);
+        afterWrite(saved);
         return ResponseEntity.status(HttpStatus.CREATED).body(toDto(saved));
     }
 
@@ -72,6 +81,7 @@ public abstract class CrudResource<E, D> {
         E entity = find(id);
         apply(dto, entity);
         repository.flush();
+        afterWrite(entity);
         return toDto(entity);
     }
 
@@ -83,6 +93,7 @@ public abstract class CrudResource<E, D> {
         repository.delete(entity);
         // Flush now so a foreign key violation is reported here, with a clear message
         repository.flush();
+        afterDelete(entity);
         return ResponseEntity.noContent().build();
     }
 
@@ -106,6 +117,13 @@ public abstract class CrudResource<E, D> {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le champ « " + field + " » est obligatoire");
         }
         return value instanceof String s ? (T) s.trim() : value;
+    }
+
+    protected static java.math.BigDecimal positive(java.math.BigDecimal value, String field) {
+        if (required(value, field).signum() <= 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Le champ « " + field + " » doit être positif");
+        }
+        return value;
     }
 
     protected static String optional(String value) {

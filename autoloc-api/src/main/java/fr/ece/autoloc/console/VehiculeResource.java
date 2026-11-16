@@ -8,6 +8,7 @@ import fr.ece.autoloc.domain.Vehicule;
 import fr.ece.autoloc.repository.AgenceRepository;
 import fr.ece.autoloc.repository.EquipementRepository;
 import fr.ece.autoloc.repository.VehiculeRepository;
+import fr.ece.autoloc.service.FlotteService;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -27,12 +28,14 @@ public class VehiculeResource extends CrudResource<Vehicule, VehiculeResource.Ve
 
     private final AgenceRepository agenceRepository;
     private final EquipementRepository equipementRepository;
+    private final FlotteService flotteService;
 
     public VehiculeResource(VehiculeRepository repository, AgenceRepository agenceRepository,
-                            EquipementRepository equipementRepository) {
+                            EquipementRepository equipementRepository, FlotteService flotteService) {
         super(repository, "Véhicule");
         this.agenceRepository = agenceRepository;
         this.equipementRepository = equipementRepository;
+        this.flotteService = flotteService;
     }
 
     static String label(Vehicule v) {
@@ -62,8 +65,11 @@ public class VehiculeResource extends CrudResource<Vehicule, VehiculeResource.Ve
         v.setMarque(required(dto.marque(), "marque"));
         v.setModele(required(dto.modele(), "modèle"));
         v.setCategorie(required(dto.categorie(), "catégorie"));
-        v.setTarifJournalier(required(dto.tarifJournalier(), "tarif journalier"));
-        v.setStatut(dto.statut() == null ? StatutVehicule.DISPONIBLE : dto.statut());
+        v.setTarifJournalier(positive(dto.tarifJournalier(), "tarif journalier"));
+        // The status is never typed by hand: it is computed from reservations and maintenances (afterWrite)
+        if (v.getStatut() == null) {
+            v.setStatut(StatutVehicule.DISPONIBLE);
+        }
         v.setAgence(reference(agenceRepository, dto.agenceId(), "Agence"));
 
         // Vehicule owns the many-to-many: updating this Set rewrites the vehicule_equipement rows
@@ -72,5 +78,10 @@ public class VehiculeResource extends CrudResource<Vehicule, VehiculeResource.Ve
             dto.equipementIds().forEach(id ->
                     v.getEquipements().add(reference(equipementRepository, id, "Équipement")));
         }
+    }
+
+    @Override
+    protected void afterWrite(Vehicule v) {
+        flotteService.synchroniser(v);
     }
 }

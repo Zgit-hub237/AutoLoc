@@ -4,6 +4,7 @@ import fr.ece.autoloc.domain.Maintenance;
 import fr.ece.autoloc.domain.Vehicule;
 import fr.ece.autoloc.repository.MaintenanceRepository;
 import fr.ece.autoloc.repository.VehiculeRepository;
+import fr.ece.autoloc.service.FlotteService;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -20,10 +21,13 @@ public class MaintenanceResource extends CrudResource<Maintenance, MaintenanceRe
     }
 
     private final VehiculeRepository vehiculeRepository;
+    private final FlotteService flotteService;
 
-    public MaintenanceResource(MaintenanceRepository repository, VehiculeRepository vehiculeRepository) {
+    public MaintenanceResource(MaintenanceRepository repository, VehiculeRepository vehiculeRepository,
+                               FlotteService flotteService) {
         super(repository, "Maintenance");
         this.vehiculeRepository = vehiculeRepository;
+        this.flotteService = flotteService;
     }
 
     @Override
@@ -48,5 +52,16 @@ public class MaintenanceResource extends CrudResource<Maintenance, MaintenanceRe
         m.setDateFin(dto.dateFin());
         m.setDescription(required(dto.description(), "description"));
         m.setVehicule(reference(vehiculeRepository, required(dto.vehiculeId(), "véhicule"), "Véhicule"));
+    }
+
+    /** A maintenance in progress puts the vehicle in MAINTENANCE; its end makes it available again. */
+    @Override
+    protected void afterWrite(Maintenance m) {
+        flotteService.synchroniserTout();   // the vehicle may also have been changed
+    }
+
+    @Override
+    protected void afterDelete(Maintenance m) {
+        flotteService.synchroniserTout();
     }
 }

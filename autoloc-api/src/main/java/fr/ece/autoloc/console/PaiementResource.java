@@ -40,11 +40,21 @@ public class PaiementResource extends CrudResource<Paiement, PaiementResource.Pa
 
     @Override
     protected void apply(PaiementDto dto, Paiement p) {
-        p.setMontant(required(dto.montant(), "montant"));
+        BigDecimal montant = positive(dto.montant(), "montant");
         p.setDatePaiement(dto.datePaiement() == null ? LocalDate.now() : dto.datePaiement());
         p.setModePaiement(required(dto.modePaiement(), "mode de paiement"));
         // Owning side only: going through the old contract's collection would trigger orphanRemoval
-        p.setContrat(reference(contratRepository, required(dto.contratId(), "contrat"), "Contrat"));
+        Contrat contrat = reference(contratRepository, required(dto.contratId(), "contrat"), "Contrat");
+        BigDecimal dejaPaye = contrat.getPaiements().stream()
+                .filter(autre -> autre != p)
+                .map(Paiement::getMontant).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (dejaPaye.add(montant).compareTo(contrat.getMontantTotal()) > 0) {
+            throw new org.springframework.web.server.ResponseStatusException(org.springframework.http.HttpStatus.BAD_REQUEST,
+                    "Le total payé dépasserait le montant du contrat (" + contrat.getMontantTotal() + " €, déjà payé : "
+                            + dejaPaye + " €)");
+        }
+        p.setMontant(montant);
+        p.setContrat(contrat);
     }
 
     /** Removing it from the contract's collection deletes it through orphanRemoval. */

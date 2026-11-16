@@ -45,8 +45,9 @@ Captures Postman (dossier `docs/captures/`) :
 
 Ces comptes sont **réservés à l'exercice en local**. Ils ne doivent jamais être réutilisés ailleurs.
 
-Bonus : les **clients** se connectent aussi, avec leur email et un mot de passe haché BCrypt **stocké en
-MySQL** (rôle `CLIENT`, accès à `/api/client/**` uniquement). Détails dans [console-web.md](console-web.md).
+Bonus : les **clients** (email) et les **employés** (identifiant défini par l'administrateur) se connectent
+aussi, avec un mot de passe haché BCrypt **stocké en MySQL**. Les employés reçoivent le rôle `AGENT` ou
+`MANAGER` selon leur fonction, les clients le rôle `CLIENT`. Droits détaillés dans [console-web.md](console-web.md).
 
 ## 4. Réponses aux questions
 

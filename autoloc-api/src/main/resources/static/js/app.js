@@ -27,13 +27,13 @@
 
     const LABELS = {
         CITADINE: 'Citadine', BERLINE: 'Berline', SUV: 'SUV', UTILITAIRE: 'Utilitaire',
-        DISPONIBLE: 'Disponible', LOUE: 'Loué', MAINTENANCE: 'En maintenance',
+        DISPONIBLE: 'Disponible', RESERVE: 'Réservé', LOUE: 'Loué', MAINTENANCE: 'En maintenance',
         AGENT: 'Agent', MANAGER: 'Manager',
         EN_ATTENTE: 'En attente', CONFIRMEE: 'Confirmée', ANNULEE: 'Annulée', TERMINEE: 'Terminée',
         CARTE: 'Carte bancaire', ESPECES: 'Espèces', VIREMENT: 'Virement'
     };
     const TONES = {
-        DISPONIBLE: 'success', LOUE: 'info', MAINTENANCE: 'warning',
+        DISPONIBLE: 'success', RESERVE: 'reserved', LOUE: 'info', MAINTENANCE: 'warning',
         EN_ATTENTE: 'warning', CONFIRMEE: 'info', ANNULEE: 'danger', TERMINEE: 'success',
         MANAGER: 'info'
     };
@@ -76,7 +76,8 @@
             ],
             fields: [
                 {key: 'immatriculation', label: 'Immatriculation', required: true, max: 20, placeholder: 'AB-123-CD'},
-                {key: 'statut', label: 'Statut', type: 'enum', enum: 'StatutVehicule', required: true, default: 'DISPONIBLE'},
+                {key: 'statut', label: 'Statut', type: 'enum', enum: 'StatutVehicule', readonly: true, default: 'DISPONIBLE',
+                    help: 'Calculé automatiquement : réservé dès qu’une location est prévue, loué pendant la location, en maintenance pendant une intervention'},
                 {key: 'marque', label: 'Marque', required: true, max: 50},
                 {key: 'modele', label: 'Modèle', required: true, max: 50},
                 {key: 'categorie', label: 'Catégorie', type: 'enum', enum: 'CategorieVehicule', required: true},
@@ -135,14 +136,22 @@
             columns: [
                 {key: 'nom', label: 'Nom', render: (e) => `<span class="primary">${esc(e.prenom)} ${esc(e.nom)}</span>`},
                 {key: 'role', label: 'Rôle', render: (e) => pill(e.role)},
-                {key: 'agenceNom', label: 'Agence', render: (e) => e.agenceNom ? esc(e.agenceNom) : dash}
+                {key: 'agenceNom', label: 'Agence', render: (e) => e.agenceNom ? esc(e.agenceNom) : dash},
+                {key: 'login', label: 'Accès console', render: (e) => e.compteActif
+                        ? `<span class="badge tone-success">${esc(e.login)}</span>` : '<span class="badge">Sans accès</span>'}
             ],
             filter: {key: 'role', enum: 'RoleEmploye', label: 'Tous les rôles'},
             fields: [
                 {key: 'prenom', label: 'Prénom', required: true, max: 50},
                 {key: 'nom', label: 'Nom', required: true, max: 50},
                 {key: 'role', label: 'Rôle', type: 'enum', enum: 'RoleEmploye', required: true},
-                {key: 'agenceId', label: 'Agence', type: 'ref', ref: 'agences'}
+                {key: 'agenceId', label: 'Agence', type: 'ref', ref: 'agences'},
+                {section: 'Compte de connexion à la console'},
+                {key: 'login', label: 'Identifiant', max: 30, placeholder: 'ex. j.dupont',
+                    help: 'Vide = aucun accès. Lettres minuscules, chiffres, point, tiret.'},
+                {key: 'motDePasse', label: 'Mot de passe', type: 'password',
+                    help: '8 caractères minimum. Obligatoire à l’ouverture du compte ; vide ensuite = inchangé.'},
+                {info: 'Les droits dépendent du rôle. Agent : clients, réservations, contrats, paiements, maintenances (sans suppression). Manager : toute la console sauf agences et employés.'}
             ]
         },
         clients: {
@@ -153,7 +162,9 @@
                 {key: 'telephone', label: 'Téléphone', render: (c) => c.telephone ? `<span class="num">${esc(c.telephone)}</span>` : dash},
                 {key: 'numPermis', label: 'Permis', render: (c) => `<span class="mono">${esc(c.numPermis)}</span>`},
                 {key: 'dateInscription', label: 'Inscription', render: (c) => fmtDate(c.dateInscription)},
-                {key: 'nbReservations', label: 'Réservations', right: true, render: (c) => `<span class="num">${c.nbReservations}</span>`}
+                {key: 'nbReservations', label: 'Réservations', right: true, render: (c) => `<span class="num">${c.nbReservations}</span>`},
+                {key: 'accesEnLigne', label: 'Accès en ligne', render: (c) => c.accesEnLigne
+                        ? '<span class="badge tone-success">Actif</span>' : '<span class="badge">Non</span>'}
             ],
             fields: [
                 {key: 'prenom', label: 'Prénom', required: true, max: 50},
@@ -161,7 +172,10 @@
                 {key: 'email', label: 'Email', type: 'email', required: true, max: 100, full: true},
                 {key: 'telephone', label: 'Téléphone', max: 20},
                 {key: 'numPermis', label: 'N° de permis', required: true, max: 30},
-                {key: 'dateInscription', label: 'Date d’inscription', type: 'date', default: today}
+                {key: 'dateInscription', label: 'Date d’inscription', type: 'date', default: today, readonly: true},
+                {section: 'Accès à l’espace client'},
+                {key: 'motDePasse', label: 'Mot de passe', type: 'password', full: true,
+                    help: 'Permet au client de se connecter en ligne avec son email. Vide = inchangé.'}
             ],
             deleteNote: 'Cascade PERSIST seulement : les réservations sont conservées, la suppression est donc refusée si le client en possède.'
         },
@@ -366,6 +380,8 @@
         writeAuth(auth);
         state.me = {
             username: me.username,
+            nom: me.nomAffiche,
+            roles: me.roles,
             admin: me.roles.includes('ADMIN'),
             client: me.roles.includes('CLIENT')
         };
@@ -378,9 +394,10 @@
             role.className = 'badge tone-success';
             $('#sidebar-foot').innerHTML = '<a href="#/">Retour au site</a>';
         } else {
-            $('#user-name').textContent = me.username;
-            role.textContent = state.me.admin ? 'Administrateur' : 'Consultation';
-            role.className = 'badge ' + (state.me.admin ? 'tone-info' : '');
+            $('#user-name').textContent = me.nomAffiche;
+            const main = ['ADMIN', 'MANAGER', 'AGENT', 'USER'].find((r) => me.roles.includes(r));
+            role.textContent = ROLE_LABELS[main] ?? main;
+            role.className = 'badge ' + (main === 'USER' ? '' : 'tone-info');
             $('#sidebar-foot').innerHTML = '<a href="#/site">Voir le site public</a>';
             // Fill the menu counters in the background
             Object.keys(RESOURCES).forEach((key) => load(key).catch(() => {}));
@@ -582,7 +599,7 @@
         const totalV = Object.values(vs).reduce((a, b) => a + b, 0);
         const rs = s.reservationsParStatut;
         const maxR = Math.max(1, ...Object.values(rs));
-        const fleetColors = {DISPONIBLE: '#12b76a', LOUE: '#2e5aac', MAINTENANCE: '#f79009'};
+        const fleetColors = {DISPONIBLE: '#12b76a', RESERVE: '#7a5af8', LOUE: '#2e5aac', MAINTENANCE: '#f79009'};
         const longDate = new Date().toLocaleDateString('fr-FR', {weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'});
 
         view.innerHTML = `
@@ -639,10 +656,24 @@
             view.querySelectorAll('[data-w]').forEach((el) => { el.style.width = el.dataset.w + '%'; })));
     }
 
+    // ------------------------------------------------------------------ Permissions (mirror of SecurityConfig)
+    const ROLE_LABELS = {ADMIN: 'Administrateur', MANAGER: 'Manager', AGENT: 'Agent', USER: 'Consultation'};
+    const hasRole = (...roles) => roles.some((r) => state.me.roles.includes(r));
+
+    /** action: 'create' | 'update' | 'delete'. The server checks again; this only adapts the screens. */
+    function can(key, action) {
+        if (hasRole('ADMIN')) return true;
+        if (key === 'agences' || key === 'employes') return false;
+        if (action === 'delete') return hasRole('MANAGER');
+        if (key === 'vehicules' || key === 'equipements') return hasRole('MANAGER');
+        return hasRole('MANAGER', 'AGENT');
+    }
+
     // ------------------------------------------------------------------ Resource list
     function renderResource(key) {
         const res = RESOURCES[key];
-        const admin = state.me.admin;
+        const canCreate = can(key, 'create');
+        const actions = can(key, 'update') || can(key, 'delete');
         setTitle(res.group, res.title);
         state.view = {key, search: '', filter: '', sort: res.defaultSort ?? null};
 
@@ -655,14 +686,14 @@
                 ${filterOptions}
                 <span class="total" id="total"></span>
                 <span class="spacer"></span>
-                ${admin ? `<button class="btn btn-primary" id="create" type="button">${newWord(res)} ${res.singular}</button>`
-                        : '<span class="readonly-note">Consultation seule (rôle USER)</span>'}
+                ${canCreate ? `<button class="btn btn-primary" id="create" type="button">${newWord(res)} ${res.singular}</button>`
+                        : '<span class="readonly-note">Consultation seule pour votre rôle</span>'}
             </div>
             <section class="panel">
                 <div class="table-wrap"><table>
                     <thead><tr>${res.columns.map((c) => `<th data-key="${c.key}" class="${c.sortable === false ? '' : 'sortable'} ${c.right ? 'right' : ''}">${c.label}<span class="arrow">↑</span></th>`).join('')}
-                    ${admin ? '<th></th>' : ''}</tr></thead>
-                    <tbody id="rows">${skeletonRows(res.columns.length + (admin ? 1 : 0))}</tbody>
+                    ${actions ? '<th></th>' : ''}</tr></thead>
+                    <tbody id="rows">${skeletonRows(res.columns.length + (actions ? 1 : 0))}</tbody>
                 </table></div>
             </section>`;
 
@@ -695,7 +726,10 @@
     function renderRows() {
         const {key, search, filter, sort} = state.view;
         const res = RESOURCES[key];
-        const admin = state.me.admin;
+        const canEdit = can(key, 'update');
+        const canDelete = can(key, 'delete');
+        const canCreate = can(key, 'create');
+        const actions = canEdit || canDelete;
         let rows = state.data[key] ?? [];
         if (filter) rows = rows.filter((r) => r[res.filter.key] === filter);
         if (search) rows = rows.filter((r) => Object.values(r).some((v) =>
@@ -713,21 +747,21 @@
         const all = (state.data[key] ?? []).length;
         $('#total').textContent = rows.length === all ? `${all} élément(s)` : `${rows.length} sur ${all}`;
 
-        const cols = res.columns.length + (admin ? 1 : 0);
+        const cols = res.columns.length + (actions ? 1 : 0);
         if (!rows.length) {
             $('#rows').innerHTML = `<tr><td colspan="${cols}"><div class="empty">
                 <h3>${all ? 'Aucun résultat' : `Aucun ${res.feminine ? 'élément' : res.singular} pour le moment`}</h3>
-                <p>${all ? 'Modifiez la recherche ou le filtre.' : (admin ? 'Créez le premier pour commencer.' : 'Un administrateur peut en ajouter.')}</p>
-                ${!all && admin ? `<button class="btn btn-primary" type="button" data-create>${newWord(res)} ${res.singular}</button>` : ''}
+                <p>${all ? 'Modifiez la recherche ou le filtre.' : (canCreate ? 'Créez le premier pour commencer.' : 'Votre rôle ne permet pas d’en ajouter.')}</p>
+                ${!all && canCreate ? `<button class="btn btn-primary" type="button" data-create>${newWord(res)} ${res.singular}</button>` : ''}
             </div></td></tr>`;
             return;
         }
         $('#rows').innerHTML = rows.map((r, i) => `
             <tr class="clickable" data-id="${r.id}" style="--i:${Math.min(i, 20)}">
                 ${res.columns.map((c) => `<td class="${c.right ? 'right' : ''}">${c.render(r)}</td>`).join('')}
-                ${admin ? `<td class="actions">
-                    <button class="btn btn-ghost btn-sm" type="button" data-edit>Modifier</button>
-                    <button class="btn btn-ghost btn-sm btn-link-danger" type="button" data-delete>Supprimer</button></td>` : ''}
+                ${actions ? `<td class="actions">
+                    ${canEdit ? '<button class="btn btn-ghost btn-sm" type="button" data-edit>Modifier</button>' : ''}
+                    ${canDelete ? '<button class="btn btn-ghost btn-sm btn-link-danger" type="button" data-delete>Supprimer</button>' : ''}</td>` : ''}
             </tr>`).join('');
     }
 
@@ -760,8 +794,8 @@
 
     async function openForm(key, row) {
         const res = RESOURCES[key];
-        const admin = state.me.admin;
         const editing = row !== null;
+        const admin = editing ? can(key, 'update') : can(key, 'create');   // may write in this form
         drawerContext = admin ? {submit: (form) => saveResource(key, row, form)} : null;
         $('#drawer-kicker').textContent = res.title;
         $('#drawer-title').textContent = !admin ? `Fiche ${res.singular}`
@@ -786,6 +820,9 @@
     }
 
     function fieldHtml(f, value, readonly) {
+        if (f.section) return `<div class="section-title">${esc(f.section)}</div>`;
+        if (f.info) return `<div class="info-box">${esc(f.info)}</div>`;
+        readonly = readonly || f.readonly;
         const dis = readonly ? 'disabled' : '';
         const req = f.required ? 'required' : '';
         const cls = 'field' + (f.full ? ' full' : '');
@@ -825,6 +862,8 @@
                 return `<label class="${cls}">${lbl}<input name="${f.key}" type="number" min="0" step="0.01" inputmode="decimal" value="${esc(v)}" ${req} ${dis}>${help}</label>`;
             case 'date':
                 return `<label class="${cls}">${lbl}<input name="${f.key}" type="date" value="${esc(v)}" ${req} ${dis}>${help}</label>`;
+            case 'password':   // never pre-filled: the server never sends a password back
+                return `<label class="${cls}">${lbl}<input name="${f.key}" type="password" autocomplete="new-password" ${dis}>${help}</label>`;
             default:
                 return `<label class="${cls}">${lbl}<input name="${f.key}" type="${f.type === 'email' ? 'email' : 'text'}" value="${esc(v)}"
                     ${f.max ? `maxlength="${f.max}"` : ''} ${f.placeholder ? `placeholder="${esc(f.placeholder)}"` : ''} ${req} ${dis}>${help}</label>`;
@@ -834,7 +873,10 @@
     function readForm(res, form) {
         const body = {};
         for (const f of res.fields) {
-            if (f.type === 'multi') {
+            if (!f.key || f.readonly) continue;
+            if (f.type === 'password') {
+                body[f.key] = form.querySelector(`[name="${f.key}"]`).value || null;
+            } else if (f.type === 'multi') {
                 body[f.key] = [...form.querySelectorAll(`[name="${f.key}"]:checked`)].map((i) => Number(i.value));
             } else if (f.type === 'boolean') {
                 body[f.key] = form.querySelector(`[name="${f.key}"]`).checked;
@@ -856,7 +898,7 @@
     async function saveResource(key, row, form) {
         const res = RESOURCES[key];
         // Client-side check of required fields (the server checks again)
-        const missing = res.fields.filter((f) => f.required && f.type !== 'multi' && f.type !== 'boolean'
+        const missing = res.fields.filter((f) => f.key && f.required && !f.readonly && f.type !== 'multi' && f.type !== 'boolean'
             && !form.querySelector(`[name="${f.key}"]`).value.trim());
         form.querySelectorAll('.field').forEach((el) => el.classList.remove('invalid'));
         if (missing.length) {

@@ -19,13 +19,31 @@ par `js/app.js` : aucune image externe, aucun droit d'auteur, couleur stable par
 2. Lancer `AutolocApiApplication` dans IntelliJ (ou `./mvnw spring-boot:run`).
 3. Ouvrir **http://localhost:8080**.
 
-## Les trois rôles
+## Les rôles
 
 | Rôle | Qui | Connexion | Ce qu'il peut faire |
 |---|---|---|---|
-| `CLIENT` | un client de l'agence | son **email** + mot de passe choisi à l'inscription (stocké haché BCrypt en base) | rechercher un véhicule disponible, louer et payer, consulter et annuler ses locations, modifier son profil |
-| `ADMIN` | un gestionnaire de l'agence | identifiant interne | tout gérer dans la console : 9 entités, tableau de bord |
-| `USER` | un collaborateur en consultation (stagiaire, comptable…) | identifiant interne | voir la console **sans rien modifier** |
+| `CLIENT` | un client | son **email** + mot de passe (inscription en ligne, ou accès ouvert au guichet) | louer et payer, suivre et annuler ses locations, modifier son profil |
+| `AGENT` | employé de rôle AGENT | identifiant + mot de passe définis par l'administrateur | console : tout lire ; créer et modifier clients, réservations, contrats, paiements, maintenances ; **jamais supprimer** |
+| `MANAGER` | employé de rôle MANAGER | identifiant + mot de passe définis par l'administrateur | toute la console (flotte comprise, suppressions comprises) **sauf** agences et employés (lecture) |
+| `ADMIN` | administrateur | compte interne | tout, y compris les agences et les **comptes des employés** |
+| `USER` | collaborateur en consultation | compte interne | toute la console en **lecture seule** |
+
+Les droits sont appliqués **par le serveur** (règles de `SecurityConfig`, du plus précis au plus large) ;
+l'interface se contente de masquer les boutons inutiles (`can()` dans `js/app.js`).
+
+| Requête console | USER | AGENT | MANAGER | ADMIN |
+|---|---|---|---|---|
+| `GET /api/console/**` | oui | oui | oui | oui |
+| écrire agences, employés | non | non | non | oui |
+| `DELETE /api/console/**` | non | non | oui | oui |
+| écrire véhicules, équipements | non | non | oui | oui |
+| écrire clients, réservations, contrats, paiements, maintenances | non | oui | oui | oui |
+
+**Comptes des employés** : à la création (ou modification) d'un employé, l'administrateur saisit un
+identifiant (3 à 30 caractères `a-z 0-9 . _ -`, unique, différent de `admin`/`student`) et un mot de passe
+(8 caractères minimum, stocké haché BCrypt). Sans identifiant, l'employé n'a pas d'accès. Le rôle
+de l'employé (`AGENT`/`MANAGER`) devient son rôle Spring Security à la connexion.
 
 Le compte `USER` (`student`) vient de l'atelier 2 : c'est lui qui démontre le **403** (« authentifié mais
 pas autorisé »). Dans l'application il a un sens métier : un accès en lecture seule à la gestion.
@@ -35,11 +53,41 @@ connexion) :
 
 | Compte | Mot de passe | Rôle |
 |---|---|---|
-| `camille.martin@example.com` | `client123` | CLIENT (créé par `DemoDataInitializer`) |
+| `camille.martin@example.com` | `client123` | CLIENT |
+| `agent` | `agent123` | AGENT (Hugo Petit) |
+| `manager` | `manager123` | MANAGER (Julie Moreau) |
 | `admin` | `admin123` | ADMIN |
 | `student` | `student123` | USER |
 
-N'importe qui peut aussi créer un compte client avec « Créer un compte ».
+## Statut des véhicules : calculé, jamais saisi
+
+Le statut d'un véhicule décrit **aujourd'hui** ; il est calculé par `service/FlotteService` :
+
+| Statut | Condition |
+|---|---|
+| `MAINTENANCE` | une maintenance couvre aujourd'hui (sans date de fin = encore en cours) |
+| `LOUE` | une réservation **CONFIRMEE** couvre aujourd'hui |
+| `RESERVE` | une réservation (en attente ou confirmée) est prévue à une date ultérieure |
+| `DISPONIBLE` | sinon |
+
+- Recalculé après chaque location, annulation, réservation ou maintenance (console et espace client).
+- Tâche planifiée chaque nuit à 00:05 (`@Scheduled`) et à chaque démarrage : les réservations confirmées
+  dont la fin est passée deviennent **TERMINEE**, celles restées EN_ATTENTE après leur début deviennent
+  **ANNULEE**, puis tous les statuts sont recalculés.
+- Une location réservée pour plus tard rend le véhicule **RESERVE dès la réservation**, puis **LOUE le jour
+  du départ** ; après le retour il redevient DISPONIBLE (ou RESERVE s'il a une autre location prévue).
+- Un véhicule RESERVE reste louable **à d'autres dates** : la disponibilité d'une période se vérifie par
+  chevauchement (réservations actives + maintenances), pas par le statut.
+- Dans la console, le champ Statut est donc en lecture seule.
+
+## Règles de cohérence
+
+- Pas de double réservation : une réservation active (EN_ATTENTE ou CONFIRMEE) ne peut pas chevaucher une
+  autre réservation active ni une maintenance du même véhicule (console **et** espace client, 409).
+- Annuler une réservation invalide son contrat (gardé pour l'historique).
+- Le total des paiements d'un contrat ne peut pas dépasser son montant (400) ; montants et tarifs > 0.
+- Un contrat ne peut pas être validé pour une réservation annulée.
+- Un client créé au guichet peut recevoir un accès en ligne (mot de passe saisi par l'agent).
 
 ## Parcours client
 
@@ -48,7 +96,7 @@ N'importe qui peut aussi créer un compte client avec « Créer un compte ».
 1. **Inscription** (`POST /api/client/inscription`, ouvert aux anonymes) : identité, email, permis,
    mot de passe (8 caractères minimum). Email et permis uniques.
 2. **Recherche** : dates de départ et de retour, catégorie. Seuls les véhicules **disponibles** sont
-   proposés : pas en maintenance, et sans réservation (non annulée) qui chevauche la période.
+   proposés : sans maintenance ni réservation active (en attente ou confirmée) qui chevauche la période.
    Le prix total est calculé : tarif journalier × nombre de jours (bornes incluses).
 3. **Louer** : récapitulatif, mode de paiement, acceptation des conditions, « Payer ».
    Le serveur crée en **une transaction** : la réservation (CONFIRMEE), le contrat (validé) et le

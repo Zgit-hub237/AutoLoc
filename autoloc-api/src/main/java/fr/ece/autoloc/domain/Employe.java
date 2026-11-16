@@ -30,4 +30,12 @@ public class Employe {
 
     @ManyToOne(fetch = FetchType.LAZY)
     private Agence agence;
+
+    /** Login for the agency console; null = no access. The rights depend on the role (AGENT, MANAGER). */
+    @Column(unique = true, length = 30)
+    private String login;
+
+    /** BCrypt hash of the password, never the password itself. */
+    @Column(length = 100)
+    private String motDePasse;
 }

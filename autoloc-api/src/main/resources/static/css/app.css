@@ -204,6 +204,7 @@ input[disabled], select[disabled], textarea[disabled] { background: var(--surfac
 .tone-info { background: var(--info-bg); color: var(--info); }
 .tone-warning { background: var(--warning-bg); color: var(--warning); }
 .tone-danger { background: var(--danger-bg); color: var(--danger); }
+.tone-reserved { background: #f4f3ff; color: #5925dc; }
 .tag { display: inline-block; padding: 1px 7px; margin: 1px 4px 1px 0; border-radius: 4px;
     background: var(--neutral-bg); color: var(--text-2); font-size: 12px; border: 1px solid var(--border); }
 
@@ -225,7 +226,7 @@ input[disabled], select[disabled], textarea[disabled] { background: var(--surfac
 
 .stack-bar { display: flex; height: 10px; border-radius: 999px; overflow: hidden; background: var(--neutral-bg); }
 .stack-bar span { height: 100%; width: 0; transition: width .9s var(--ease); }
-.legend { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
+.legend { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; }
 .legend-item { display: flex; flex-direction: column; gap: 2px; }
 .legend-item .lbl { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--muted); }
 .legend-item .lbl i { width: 8px; height: 8px; border-radius: 2px; }
