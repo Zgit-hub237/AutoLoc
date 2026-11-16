@@ -1,7 +1,17 @@
-# Bonus : application web AutoLoc (espace client + console de l'agence)
+# Bonus : application web AutoLoc (site public, espace client, console de l'agence)
 
 Une interface web servie par l'application Spring Boot elle-même (HTML/CSS/JavaScript natifs, sans
-framework ni Node). Une seule page de connexion ; l'écran affiché dépend du rôle du compte.
+framework ni Node). Elle a trois parties :
+
+1. **Site public** (sans connexion) : présentation, recherche des véhicules disponibles avec le prix
+   total, explication du fonctionnement, liste des agences.
+2. **Espace client** : la connexion n'est demandée qu'au moment de **louer**. Le visiteur qui clique sur
+   « Louer » se connecte (ou crée son compte), puis revient directement au paiement du véhicule choisi.
+3. **Console de l'agence** (ADMIN, USER) : gestion des 9 entités et tableau de bord.
+
+Les illustrations (véhicules par catégorie, façades d'agence) sont des dessins vectoriels SVG générés
+par `js/app.js` : aucune image externe, aucun droit d'auteur, couleur stable par véhicule
+(calculée depuis l'immatriculation).
 
 ## Lancer
 
@@ -33,6 +43,8 @@ N'importe qui peut aussi créer un compte client avec « Créer un compte ».
 
 ## Parcours client
 
+0. **Visite** (anonyme) : `GET /api/public/vehicules?debut=&fin=&categorie=` et `GET /api/public/agences`,
+   ouverts à tous comme les valeurs d'enums (`GET /api/enums`). Tout le reste de l'API exige une connexion.
 1. **Inscription** (`POST /api/client/inscription`, ouvert aux anonymes) : identité, email, permis,
    mot de passe (8 caractères minimum). Email et permis uniques.
 2. **Recherche** : dates de départ et de retour, catégorie. Seuls les véhicules **disponibles** sont
@@ -58,13 +70,14 @@ navigateur ── index.html + css/app.css + js/app.js     (src/main/resources/s
      │  fetch + en-tête Authorization: Basic ...
      ▼
 Spring Security
+  ├─ /api/public/**, GET /api/enums → tout le monde (site public)
   ├─ POST /api/client/inscription   → tout le monde
   ├─ /api/client/**                 → CLIENT
-  ├─ /api/me, /api/enums            → tout utilisateur connecté
+  ├─ /api/me                        → tout utilisateur connecté
   ├─ GET /api/console/**            → USER ou ADMIN
   └─ POST/PUT/DELETE /api/console/** → ADMIN
      ▼
-fr.ece.autoloc.espaceclient   EspaceClientController → EspaceClientService (@Service, @Transactional)
+fr.ece.autoloc.espaceclient   CatalogueController (public) + EspaceClientController → EspaceClientService
 fr.ece.autoloc.console        CrudResource<E, D> + une ressource par entité, ConsoleController (/stats)
 fr.ece.autoloc.web.controller SessionController (/me, /enums)
      ▼

@@ -60,14 +60,15 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http.authorizeHttpRequests(auth -> auth
-                        // Web console static files (the data itself stays protected by /api/**)
+                        // Website static files (the data itself stays protected by /api/**)
                         .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/favicon.svg").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
                         // Customer space: sign-up is open, everything else requires the CLIENT role
                         .requestMatchers(HttpMethod.POST, "/api/client/inscription").permitAll()
                         .requestMatchers("/api/client/**").hasRole("CLIENT")
-                        // Session info shared by every role (staff and customers)
-                        .requestMatchers("/api/me", "/api/enums").authenticated()
+                        // Reference values (categories, payment modes...) are public; session info needs a login
+                        .requestMatchers(HttpMethod.GET, "/api/enums").permitAll()
+                        .requestMatchers("/api/me").authenticated()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // Console: everyone reads, only ADMIN creates, modifies or deletes
                         .requestMatchers(HttpMethod.GET, "/api/console/**").hasAnyRole("USER", "ADMIN")

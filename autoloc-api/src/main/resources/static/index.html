@@ -4,22 +4,139 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>AutoLoc · Location de véhicules</title>
+    <meta name="description" content="Location de citadines, berlines, SUV et utilitaires. Comparez, réservez et payez en ligne.">
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
 
-<!-- Connexion -->
+<!-- ================================================================ Site public -->
+<div id="site" class="site" hidden>
+    <header class="site-header" id="site-header">
+        <div class="container header-inner">
+            <a class="brand" href="#/" data-scroll="top">
+                <span class="brand-mark">AL</span>
+                <span class="brand-name">AutoLoc</span>
+            </a>
+            <nav class="site-nav" aria-label="Sections">
+                <a href="#/" data-scroll="offres">Véhicules</a>
+                <a href="#/" data-scroll="etapes">Comment ça marche</a>
+                <a href="#/" data-scroll="agences">Agences</a>
+            </nav>
+            <div class="site-actions" id="site-actions"></div>
+        </div>
+    </header>
+
+    <section class="hero" id="top">
+        <div class="container hero-inner">
+            <div class="hero-text">
+                <span class="eyebrow">Location de véhicules en agence</span>
+                <h1>Le bon véhicule,<br>au bon moment.</h1>
+                <p>Citadines, berlines, SUV et utilitaires. Comparez les prix, réservez et payez en ligne,
+                    puis récupérez votre véhicule en agence.</p>
+                <ul class="hero-points">
+                    <li>Prix total affiché avant de réserver</li>
+                    <li>Annulation jusqu’à la veille du départ</li>
+                    <li>Contrat et paiement en ligne</li>
+                </ul>
+            </div>
+            <div class="hero-visual" aria-hidden="true">
+                <div class="hero-disc"></div>
+                <div class="hero-car" id="hero-car"></div>
+                <div class="hero-price" id="hero-price" hidden></div>
+            </div>
+        </div>
+        <div class="container">
+            <form id="site-search" class="search-card" novalidate>
+                <label class="field"><span>Départ</span><input type="date" name="debut" required></label>
+                <label class="field"><span>Retour</span><input type="date" name="fin" required></label>
+                <label class="field"><span>Catégorie</span><select name="categorie"><option value="">Toutes les catégories</option></select></label>
+                <button class="btn btn-primary btn-lg" type="submit">Voir les véhicules</button>
+            </form>
+        </div>
+    </section>
+
+    <section class="section" id="offres">
+        <div class="container">
+            <div class="section-head">
+                <div>
+                    <span class="eyebrow dark">Notre flotte</span>
+                    <h2 id="site-results-title">Véhicules disponibles</h2>
+                </div>
+                <p class="muted" id="site-results-sub"></p>
+            </div>
+            <div class="offers" id="site-offers"></div>
+        </div>
+    </section>
+
+    <section class="section section-alt" id="etapes">
+        <div class="container">
+            <div class="section-head center">
+                <div>
+                    <span class="eyebrow dark">Comment ça marche</span>
+                    <h2>Louer en trois étapes</h2>
+                </div>
+            </div>
+            <div class="steps">
+                <article class="step"><span class="step-num">1</span><h3>Choisissez vos dates</h3>
+                    <p>Indiquez le départ et le retour : seuls les véhicules réellement libres sur la période s’affichent, avec le prix total.</p></article>
+                <article class="step"><span class="step-num">2</span><h3>Réservez et payez</h3>
+                    <p>Créez votre compte en une minute, choisissez votre mode de paiement. Le contrat est établi immédiatement.</p></article>
+                <article class="step"><span class="step-num">3</span><h3>Récupérez le véhicule</h3>
+                    <p>Présentez votre permis en agence. Vos locations restent consultables et annulables jusqu’à la veille.</p></article>
+            </div>
+        </div>
+    </section>
+
+    <section class="section" id="agences">
+        <div class="container">
+            <div class="section-head">
+                <div>
+                    <span class="eyebrow dark">Nos agences</span>
+                    <h2>Un réseau proche de vous</h2>
+                </div>
+            </div>
+            <div class="agencies" id="site-agencies"></div>
+        </div>
+    </section>
+
+    <section class="cta">
+        <div class="container cta-inner">
+            <div>
+                <h2>Prêt à prendre la route ?</h2>
+                <p>Votre compte client vous permet de réserver, payer et suivre vos locations.</p>
+            </div>
+            <div class="cta-actions" id="cta-actions"></div>
+        </div>
+    </section>
+
+    <footer class="site-footer">
+        <div class="container footer-inner">
+            <div class="brand">
+                <span class="brand-mark">AL</span>
+                <span class="brand-name">AutoLoc</span>
+            </div>
+            <p>Projet pédagogique ECE · Spring Boot, Spring Data JPA, Spring Security, MySQL</p>
+            <a href="#/connexion" class="footer-link">Espace agence</a>
+        </div>
+    </footer>
+</div>
+
+<!-- ================================================================ Connexion / inscription -->
 <section id="login" class="login" hidden>
     <div class="login-card">
-        <div class="brand brand-lg">
-            <span class="brand-mark">AL</span>
-            <span class="brand-name">AutoLoc</span>
+        <div class="login-top">
+            <a class="brand brand-lg" href="#/">
+                <span class="brand-mark">AL</span>
+                <span class="brand-name">AutoLoc</span>
+            </a>
+            <a class="back-link" href="#/">Retour au site</a>
         </div>
-        <!-- Connexion : clients (email) et personnel de l'agence (identifiant) -->
+        <div class="info-box" id="login-info" hidden></div>
+
         <div id="login-pane">
             <h1>Connexion</h1>
-            <p class="muted">Louez un véhicule en quelques minutes, ou accédez à la gestion de l’agence.</p>
+            <p class="muted">Clients : connectez-vous avec votre email. Personnel : avec votre identifiant.</p>
             <form id="login-form" novalidate>
                 <label class="field">
                     <span>Email ou identifiant</span>
@@ -32,10 +149,9 @@
                 <p id="login-error" class="form-error" hidden></p>
                 <button class="btn btn-primary btn-block" type="submit">Se connecter</button>
             </form>
-            <p class="switch-pane">Pas encore client ? <a href="#" data-pane="signup">Créer un compte</a></p>
+            <p class="switch-pane">Pas encore client ? <a href="#/inscription">Créer un compte</a></p>
         </div>
 
-        <!-- Inscription d'un nouveau client -->
         <div id="signup-pane" hidden>
             <h1>Créer un compte client</h1>
             <p class="muted">Votre permis de conduire est requis pour louer un véhicule.</p>
@@ -51,18 +167,18 @@
                 <p id="signup-error" class="form-error full" hidden></p>
                 <button class="btn btn-primary btn-block full" type="submit">Créer mon compte</button>
             </form>
-            <p class="switch-pane">Déjà client ? <a href="#" data-pane="login">Se connecter</a></p>
+            <p class="switch-pane">Déjà client ? <a href="#/connexion">Se connecter</a></p>
         </div>
     </div>
 </section>
 
-<!-- Application -->
+<!-- ================================================================ Espaces connectés -->
 <div id="app" class="shell" hidden>
     <aside class="sidebar" id="sidebar">
-        <div class="brand">
+        <a class="brand" href="#/" title="Retour au site">
             <span class="brand-mark">AL</span>
             <span class="brand-name">AutoLoc</span>
-        </div>
+        </a>
         <nav id="nav" class="nav"></nav>
         <div class="sidebar-foot" id="sidebar-foot"></div>
     </aside>
@@ -80,14 +196,14 @@
                     <span class="user-name" id="user-name"></span>
                     <span class="badge" id="user-role"></span>
                 </div>
-                <button class="btn btn-ghost" id="logout" type="button">Se déconnecter</button>
+                <button class="btn btn-ghost" data-logout type="button">Se déconnecter</button>
             </div>
         </header>
         <main id="view" class="view"></main>
     </div>
 </div>
 
-<!-- Panneau latéral (formulaire) -->
+<!-- Panneau latéral (formulaires, réservation) -->
 <div class="drawer-layer" id="drawer-layer" hidden>
     <div class="overlay" data-close></div>
     <aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
@@ -110,7 +226,7 @@
         <h2 id="modal-title"></h2>
         <p id="modal-text" class="muted"></p>
         <div class="modal-actions">
-            <button class="btn btn-ghost" type="button" data-cancel>Annuler</button>
+            <button class="btn btn-ghost" type="button" data-cancel>Retour</button>
             <button class="btn btn-danger" type="button" id="modal-confirm">Supprimer</button>
         </div>
     </div>
