@@ -3,7 +3,7 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>AutoLoc · Console de gestion</title>
+    <title>AutoLoc · Location de véhicules</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="css/app.css">
 </head>
@@ -16,23 +16,42 @@
             <span class="brand-mark">AL</span>
             <span class="brand-name">AutoLoc</span>
         </div>
-        <h1>Console de gestion</h1>
-        <p class="muted">Connectez-vous pour gérer la flotte, les clients et les locations.</p>
-        <form id="login-form" novalidate>
-            <label class="field">
-                <span>Identifiant</span>
-                <input name="username" autocomplete="username" required>
-            </label>
-            <label class="field">
-                <span>Mot de passe</span>
-                <input name="password" type="password" autocomplete="current-password" required>
-            </label>
-            <p id="login-error" class="form-error" hidden></p>
-            <button class="btn btn-primary btn-block" type="submit">Se connecter</button>
-        </form>
-        <div class="login-hint">
-            <div><span class="kbd">admin</span> / <span class="kbd">admin123</span> Administration complète</div>
-            <div><span class="kbd">student</span> / <span class="kbd">student123</span> Consultation seule</div>
+        <!-- Connexion : clients (email) et personnel de l'agence (identifiant) -->
+        <div id="login-pane">
+            <h1>Connexion</h1>
+            <p class="muted">Louez un véhicule en quelques minutes, ou accédez à la gestion de l’agence.</p>
+            <form id="login-form" novalidate>
+                <label class="field">
+                    <span>Email ou identifiant</span>
+                    <input name="username" autocomplete="username" required>
+                </label>
+                <label class="field">
+                    <span>Mot de passe</span>
+                    <input name="password" type="password" autocomplete="current-password" required>
+                </label>
+                <p id="login-error" class="form-error" hidden></p>
+                <button class="btn btn-primary btn-block" type="submit">Se connecter</button>
+            </form>
+            <p class="switch-pane">Pas encore client ? <a href="#" data-pane="signup">Créer un compte</a></p>
+        </div>
+
+        <!-- Inscription d'un nouveau client -->
+        <div id="signup-pane" hidden>
+            <h1>Créer un compte client</h1>
+            <p class="muted">Votre permis de conduire est requis pour louer un véhicule.</p>
+            <form id="signup-form" class="form-grid" novalidate>
+                <label class="field"><span>Prénom</span><input name="prenom" autocomplete="given-name" maxlength="50" required></label>
+                <label class="field"><span>Nom</span><input name="nom" autocomplete="family-name" maxlength="50" required></label>
+                <label class="field full"><span>Email</span><input name="email" type="email" autocomplete="email" maxlength="100" required></label>
+                <label class="field"><span>Téléphone</span><input name="telephone" type="tel" autocomplete="tel" maxlength="20"></label>
+                <label class="field"><span>N° de permis</span><input name="numPermis" maxlength="30" required></label>
+                <label class="field"><span>Mot de passe</span><input name="motDePasse" type="password" autocomplete="new-password" minlength="8" required></label>
+                <label class="field"><span>Confirmation</span><input name="confirmation" type="password" autocomplete="new-password" required></label>
+                <span class="help full">8 caractères minimum. Il est enregistré chiffré (BCrypt).</span>
+                <p id="signup-error" class="form-error full" hidden></p>
+                <button class="btn btn-primary btn-block full" type="submit">Créer mon compte</button>
+            </form>
+            <p class="switch-pane">Déjà client ? <a href="#" data-pane="login">Se connecter</a></p>
         </div>
     </div>
 </section>
@@ -45,7 +64,7 @@
             <span class="brand-name">AutoLoc</span>
         </div>
         <nav id="nav" class="nav"></nav>
-        <div class="sidebar-foot">API Spring Boot · MySQL</div>
+        <div class="sidebar-foot" id="sidebar-foot"></div>
     </aside>
     <div class="scrim" id="scrim"></div>
 

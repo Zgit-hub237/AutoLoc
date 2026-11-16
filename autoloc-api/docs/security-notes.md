@@ -45,6 +45,9 @@ Captures Postman (dossier `docs/captures/`) :
 
 Ces comptes sont **réservés à l'exercice en local**. Ils ne doivent jamais être réutilisés ailleurs.
 
+Bonus : les **clients** se connectent aussi, avec leur email et un mot de passe haché BCrypt **stocké en
+MySQL** (rôle `CLIENT`, accès à `/api/client/**` uniquement). Détails dans [console-web.md](console-web.md).
+
 ## 4. Réponses aux questions
 
 ### Pourquoi `/api/admin/**` doit-il être déclaré avant `/api/**` ?

@@ -62,7 +62,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
     height: 36px; padding: 0 14px;
     border: 1px solid var(--border-strong); border-radius: var(--radius);
     background: var(--surface); color: var(--text-2);
-    font-weight: 550; cursor: pointer; white-space: nowrap;
+    font-weight: 550; cursor: pointer; white-space: nowrap; text-decoration: none;
     box-shadow: var(--shadow-sm);
     transition: background .15s, border-color .15s, color .15s, transform .08s, box-shadow .15s;
 }
@@ -120,14 +120,15 @@ input[disabled], select[disabled], textarea[disabled] { background: var(--surfac
 .login-card h1 { font-size: 22px; margin-top: 28px; }
 .login-card > p { margin: 6px 0 24px; }
 .login-card form { display: flex; flex-direction: column; gap: 16px; }
-.login-hint {
-    margin-top: 22px; padding-top: 18px; border-top: 1px solid var(--border);
-    display: flex; flex-direction: column; gap: 6px; font-size: 12.5px; color: var(--muted);
-}
-.kbd { font-family: var(--mono); font-size: 12px; color: var(--text-2); background: var(--neutral-bg);
-    padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
-.login-hint .kbd { margin-right: 2px; }
-.login-hint div .kbd:nth-of-type(2) { margin-right: 8px; }
+.login-card:has(#signup-pane:not([hidden])) { max-width: 520px; }
+#login-pane, #signup-pane { animation: fadeUp .3s var(--ease); }
+.switch-pane { margin: 22px 0 0; padding-top: 18px; border-top: 1px solid var(--border); font-size: 13.5px; color: var(--muted); text-align: center; }
+.switch-pane a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.switch-pane a:hover { text-decoration: underline; }
+.form-grid { display: grid !important; grid-template-columns: 1fr 1fr; gap: 16px 14px; }
+.form-grid .full { grid-column: 1 / -1; }
+.help { font-size: 12px; color: var(--muted); }
+.form-actions { display: flex; justify-content: flex-end; }
 
 /* ---------- Shell ---------- */
 .shell { display: flex; min-height: 100%; }
@@ -295,6 +296,44 @@ tbody tr:hover td.actions .btn, td.actions .btn:focus-visible { opacity: 1; }
 .skeleton .bone { height: 10px; border-radius: 4px; background: linear-gradient(90deg, #eef0f3 0%, #f7f8fa 40%, #eef0f3 80%);
     background-size: 200% 100%; animation: shimmer 1.2s linear infinite; }
 
+td.actions-visible { width: 1%; white-space: nowrap; text-align: right; }
+
+/* ---------- Customer space ---------- */
+.search-panel { padding: 18px 20px; margin-bottom: 22px; }
+.search-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; gap: 14px; align-items: end; }
+.search-grid .btn { height: 38px; padding: 0 22px; }
+.results-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.results-head h2 { font-size: 17px; }
+.offers { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.offers .full-row { grid-column: 1 / -1; }
+.offer {
+    display: flex; flex-direction: column; padding: 18px 20px; min-height: 196px;
+    transition: transform .2s var(--ease), box-shadow .2s, border-color .2s;
+    animation: fadeUp .35s var(--ease) both; animation-delay: calc(var(--i, 0) * 40ms);
+}
+.offer:not(.skeleton):hover { transform: translateY(-2px); box-shadow: 0 10px 24px -12px rgba(16, 24, 40, .25); border-color: var(--border-strong); }
+.offer-head { display: flex; justify-content: space-between; gap: 12px; }
+.offer-head h3 { font-size: 16px; }
+.offer-head .muted { font-size: 13px; margin-top: 2px; }
+.offer-tags { margin: 14px 0 18px; min-height: 24px; font-size: 13px; }
+.offer-foot { margin-top: auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 12px;
+    padding-top: 14px; border-top: 1px solid var(--border); }
+.offer-foot .muted { font-size: 12.5px; }
+.price { font-size: 21px; font-weight: 650; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+
+.summary { margin: 0; border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.summary div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+.summary div:last-child { border-bottom: 0; }
+.summary dt { color: var(--muted); }
+.summary dd { margin: 0; text-align: right; font-weight: 500; }
+.summary .total { background: var(--surface-2); }
+.summary .total dt { color: var(--text); font-weight: 600; }
+.summary .total dd { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.check { display: flex; align-items: flex-start; gap: 10px; font-size: 13.5px; color: var(--text-2); cursor: pointer; }
+.check input { width: 16px; height: 16px; margin-top: 2px; box-shadow: none; accent-color: var(--accent); }
+
+.profile { max-width: 760px; }
+
 /* ---------- Drawer ---------- */
 .drawer-layer, .modal-layer { position: fixed; inset: 0; z-index: 50; }
 .overlay { position: absolute; inset: 0; background: rgba(15, 23, 42, .38); opacity: 0; transition: opacity .25s; }
@@ -391,6 +430,9 @@ tbody tr:hover td.actions .btn, td.actions .btn:focus-visible { opacity: 1; }
     .view { padding: 18px 16px 40px; }
     .user-meta .badge { display: none; }
     .drawer-body { grid-template-columns: 1fr; }
+    .search-grid { grid-template-columns: 1fr 1fr; }
+    .search-grid .btn { grid-column: 1 / -1; }
+    .form-grid { grid-template-columns: 1fr; }
     td.actions .btn { opacity: 1; }
 }
 @media (max-width: 520px) {

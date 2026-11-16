@@ -1,11 +1,8 @@
 package fr.ece.autoloc.console;
 
-import fr.ece.autoloc.domain.CategorieVehicule;
 import fr.ece.autoloc.domain.Maintenance;
-import fr.ece.autoloc.domain.ModePaiement;
 import fr.ece.autoloc.domain.Paiement;
 import fr.ece.autoloc.domain.Reservation;
-import fr.ece.autoloc.domain.RoleEmploye;
 import fr.ece.autoloc.domain.StatutReservation;
 import fr.ece.autoloc.domain.StatutVehicule;
 import fr.ece.autoloc.domain.Vehicule;
@@ -18,8 +15,6 @@ import fr.ece.autoloc.repository.PaiementRepository;
 import fr.ece.autoloc.repository.ReservationRepository;
 import fr.ece.autoloc.repository.VehiculeRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.GrantedAuthority;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -27,7 +22,6 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
@@ -36,7 +30,7 @@ import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
-/** Session, reference data and dashboard figures for the web console. */
+/** Dashboard figures for the web console. */
 @RestController
 @RequestMapping("/api/console")
 @RequiredArgsConstructor
@@ -51,9 +45,6 @@ public class ConsoleController {
     private final PaiementRepository paiementRepository;
     private final MaintenanceRepository maintenanceRepository;
 
-    public record Me(String username, List<String> roles, boolean admin) {
-    }
-
     public record UpcomingReservation(Long id, LocalDate dateDebut, LocalDate dateFin, StatutReservation statut,
                                       String client, String vehicule) {
     }
@@ -67,29 +58,6 @@ public class ConsoleController {
                         BigDecimal montantEncaisse,
                         List<UpcomingReservation> prochainesReservations,
                         List<OpenMaintenance> maintenancesEnCours) {
-    }
-
-    /** Identity of the authenticated user: used by the console to log in and adapt the screens. */
-    @GetMapping("/me")
-    public Me me(Authentication authentication) {
-        List<String> roles = authentication.getAuthorities().stream()
-                .map(GrantedAuthority::getAuthority)
-                .filter(a -> a.startsWith("ROLE_"))          // Spring Security 7 also adds FACTOR_* authorities
-                .map(a -> a.substring("ROLE_".length()))
-                .toList();
-        return new Me(authentication.getName(), roles, roles.contains("ADMIN"));
-    }
-
-    /** Enum values, so the forms always offer exactly what the domain accepts. */
-    @GetMapping("/enums")
-    public Map<String, List<String>> enums() {
-        Map<String, List<String>> enums = new LinkedHashMap<>();
-        enums.put("CategorieVehicule", names(CategorieVehicule.values()));
-        enums.put("StatutVehicule", names(StatutVehicule.values()));
-        enums.put("RoleEmploye", names(RoleEmploye.values()));
-        enums.put("StatutReservation", names(StatutReservation.values()));
-        enums.put("ModePaiement", names(ModePaiement.values()));
-        return enums;
     }
 
     @GetMapping("/stats")
@@ -130,10 +98,6 @@ public class ConsoleController {
                 countBy(vehiculeRepository.findAll(), Vehicule::getStatut, StatutVehicule.class),
                 countBy(reservations, Reservation::getStatut, StatutReservation.class),
                 encaisse, prochaines, enCours);
-    }
-
-    private static List<String> names(Enum<?>[] values) {
-        return Arrays.stream(values).map(Enum::name).toList();
     }
 
     /** Counts per enum value, including the values that have no row (0). */

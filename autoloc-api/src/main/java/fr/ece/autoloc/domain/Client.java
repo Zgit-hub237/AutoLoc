@@ -40,6 +40,10 @@ public class Client {
     @Column(nullable = false)
     private LocalDate dateInscription;
 
+    /** BCrypt hash of the online account password; null for a client registered at the counter. */
+    @Column(length = 100)
+    private String motDePasse;
+
     @OneToMany(mappedBy = "client", cascade = CascadeType.PERSIST, fetch = FetchType.LAZY)
     private List<Reservation> reservations = new ArrayList<>();
 }

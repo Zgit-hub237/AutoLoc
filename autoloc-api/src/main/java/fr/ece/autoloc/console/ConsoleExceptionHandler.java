@@ -14,7 +14,7 @@ import java.util.Map;
 
 /** Turns errors into a JSON body {"message": "..."} that the console displays as is. */
 @Slf4j
-@RestControllerAdvice(basePackages = "fr.ece.autoloc.console")
+@RestControllerAdvice(basePackages = {"fr.ece.autoloc.console", "fr.ece.autoloc.espaceclient"})
 public class ConsoleExceptionHandler {
 
     @ExceptionHandler(ResponseStatusException.class)

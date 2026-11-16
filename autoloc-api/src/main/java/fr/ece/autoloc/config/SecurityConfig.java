@@ -1,5 +1,7 @@
 package fr.ece.autoloc.config;
 
+import fr.ece.autoloc.repository.ClientRepository;
+
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -9,6 +11,7 @@ import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.core.userdetails.User;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
@@ -17,9 +20,13 @@ import org.springframework.security.web.SecurityFilterChain;
 @Configuration
 public class SecurityConfig {
 
-    // In-memory accounts for local classroom practice only
+    /**
+     * Two sources of accounts:
+     * - agency staff, in memory (local classroom practice only): admin (ADMIN), student (USER, read only);
+     * - customers, loaded from MySQL: login = email, BCrypt password stored in client.mot_de_passe (CLIENT).
+     */
     @Bean
-    public UserDetailsService userDetailsService(PasswordEncoder encoder) {
+    public UserDetailsService userDetailsService(PasswordEncoder encoder, ClientRepository clientRepository) {
         UserDetails student = User.withUsername("student")
                 .password(encoder.encode("student123"))
                 .roles("USER")
@@ -28,7 +35,20 @@ public class SecurityConfig {
                 .password(encoder.encode("admin123"))
                 .roles("ADMIN")
                 .build();
-        return new InMemoryUserDetailsManager(student, admin);
+        InMemoryUserDetailsManager staff = new InMemoryUserDetailsManager(student, admin);
+
+        return username -> {
+            if (staff.userExists(username)) {
+                return staff.loadUserByUsername(username);
+            }
+            return clientRepository.findByEmailIgnoreCase(username)
+                    .filter(client -> client.getMotDePasse() != null)
+                    .map(client -> User.withUsername(client.getEmail())
+                            .password(client.getMotDePasse())
+                            .roles("CLIENT")
+                            .build())
+                    .orElseThrow(() -> new UsernameNotFoundException("Compte inconnu"));
+        };
     }
 
     @Bean
@@ -43,6 +63,11 @@ public class SecurityConfig {
                         // Web console static files (the data itself stays protected by /api/**)
                         .requestMatchers("/", "/index.html", "/css/**", "/js/**", "/favicon.svg").permitAll()
                         .requestMatchers("/api/public/**").permitAll()
+                        // Customer space: sign-up is open, everything else requires the CLIENT role
+                        .requestMatchers(HttpMethod.POST, "/api/client/inscription").permitAll()
+                        .requestMatchers("/api/client/**").hasRole("CLIENT")
+                        // Session info shared by every role (staff and customers)
+                        .requestMatchers("/api/me", "/api/enums").authenticated()
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         // Console: everyone reads, only ADMIN creates, modifies or deletes
                         .requestMatchers(HttpMethod.GET, "/api/console/**").hasAnyRole("USER", "ADMIN")

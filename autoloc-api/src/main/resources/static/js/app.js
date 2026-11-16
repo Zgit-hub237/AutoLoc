@@ -253,17 +253,18 @@
         constructor(status, message) { super(message); this.status = status; }
     }
 
+    /** Calls /api + path. Without credentials (sign-up) no Authorization header is sent. */
     async function api(method, path, body, auth = state.auth) {
         const headers = {
-            'Authorization': 'Basic ' + auth,
             // Asks Spring Security for a plain 401 (no browser login popup)
             'X-Requested-With': 'XMLHttpRequest',
             'Accept': 'application/json'
         };
+        if (auth) headers['Authorization'] = 'Basic ' + auth;
         if (body !== undefined) headers['Content-Type'] = 'application/json';
         let response;
         try {
-            response = await fetch('/api/console' + path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
+            response = await fetch('/api' + path, {method, headers, body: body === undefined ? undefined : JSON.stringify(body)});
         } catch {
             throw new ApiError(0, 'Serveur injoignable : l’application Spring Boot est-elle démarrée ?');
         }
@@ -271,7 +272,7 @@
         const data = await response.json().catch(() => null);
         if (!response.ok) {
             const message = data?.message
-                ?? {401: 'Identifiants incorrects.', 403: 'Action réservée au rôle ADMIN.', 404: 'Élément introuvable.'}[response.status]
+                ?? {401: 'Email/identifiant ou mot de passe incorrect.', 403: 'Action non autorisée pour votre compte.', 404: 'Élément introuvable.'}[response.status]
                 ?? `Erreur ${response.status}`;
             throw new ApiError(response.status, message);
         }
@@ -324,30 +325,98 @@
     }
 
     // ------------------------------------------------------------------ Login / logout
+    function showPane(name) {
+        $('#login-pane').hidden = name !== 'login';
+        $('#signup-pane').hidden = name !== 'signup';
+        const form = name === 'login' ? $('#login-form') : $('#signup-form');
+        setTimeout(() => form.querySelector('input').focus(), 50);
+    }
+
     function showLogin(message) {
         $('#app').hidden = true;
         $('#login').hidden = false;
+        showPane('login');
         const err = $('#login-error');
         err.hidden = !message;
         err.textContent = message || '';
-        setTimeout(() => $('#login-form [name=username]').focus(), 50);
     }
 
+    $('#login').addEventListener('click', (e) => {
+        const link = e.target.closest('[data-pane]');
+        if (!link) return;
+        e.preventDefault();
+        $('#login-error').hidden = true;
+        $('#signup-error').hidden = true;
+        showPane(link.dataset.pane);
+    });
+
+    const encode = (user, password) => btoa(unescape(encodeURIComponent(`${user}:${password}`)));
+
+    /** Loads the session and opens the space matching the role: agency console or customer space. */
     async function start(auth) {
-        state.me = await api('GET', '/me', undefined, auth);
+        const me = await api('GET', '/me', undefined, auth);
         writeAuth(auth);
+        state.me = {
+            username: me.username,
+            admin: me.roles.includes('ADMIN'),
+            client: me.roles.includes('CLIENT')
+        };
         state.enums = await api('GET', '/enums');
         $('#login').hidden = true;
         $('#app').hidden = false;
-        $('#user-name').textContent = state.me.username;
         const role = $('#user-role');
-        role.textContent = state.me.admin ? 'Administrateur' : 'Consultation';
-        role.className = 'badge ' + (state.me.admin ? 'tone-info' : '');
+        if (state.me.client) {
+            const profil = await api('GET', '/client/profil');
+            state.profil = profil;
+            $('#user-name').textContent = `${profil.prenom} ${profil.nom}`;
+            role.textContent = 'Client';
+            role.className = 'badge tone-success';
+            $('#sidebar-foot').textContent = 'Location de véhicules';
+        } else {
+            $('#user-name').textContent = me.username;
+            role.textContent = state.me.admin ? 'Administrateur' : 'Consultation';
+            role.className = 'badge ' + (state.me.admin ? 'tone-info' : '');
+            $('#sidebar-foot').textContent = 'Gestion de l’agence';
+        }
         renderNav();
         route();
-        // Fill the menu counters in the background
-        Object.keys(RESOURCES).forEach((key) => load(key).catch(() => {}));
+        if (!state.me.client) {
+            // Fill the menu counters in the background
+            Object.keys(RESOURCES).forEach((key) => load(key).catch(() => {}));
+        }
     }
+
+    function busy(button, label) {
+        button.disabled = true;
+        const previous = button.textContent;
+        button.innerHTML = `<span class="spinner"></span> ${esc(label)}`;
+        return () => { button.disabled = false; button.textContent = previous; };
+    }
+
+    $('#signup-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const form = e.currentTarget;
+        const err = $('#signup-error');
+        const data = Object.fromEntries(new FormData(form).entries());
+        const fail = (message) => { err.textContent = message; err.hidden = false; };
+        const missing = ['prenom', 'nom', 'email', 'numPermis', 'motDePasse'].filter((k) => !data[k].trim());
+        if (missing.length) return fail('Complétez tous les champs obligatoires.');
+        if (data.motDePasse.length < 8) return fail('Le mot de passe doit contenir au moins 8 caractères.');
+        if (data.motDePasse !== data.confirmation) return fail('Les deux mots de passe ne correspondent pas.');
+        err.hidden = true;
+        const done = busy(form.querySelector('button'), 'Création du compte');
+        try {
+            const {confirmation, ...body} = data;
+            await api('POST', '/client/inscription', body, null);
+            await start(encode(body.email.trim().toLowerCase(), body.motDePasse));
+            form.reset();
+            toast('Bienvenue ! Votre compte client est créé.');
+        } catch (error) {
+            fail(error.message);
+        } finally {
+            done();
+        }
+    });
 
     $('#login-form').addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -355,17 +424,14 @@
         const username = form.username.value.trim();
         const password = form.password.value;
         if (!username || !password) return showLogin('Saisissez l’identifiant et le mot de passe.');
-        const button = form.querySelector('button');
-        button.disabled = true;
-        button.innerHTML = '<span class="spinner"></span> Connexion';
+        const done = busy(form.querySelector('button'), 'Connexion');
         try {
-            await start(btoa(unescape(encodeURIComponent(`${username}:${password}`))));
+            await start(encode(username, password));
             form.reset();
         } catch (err) {
             showLogin(err.message);
         } finally {
-            button.disabled = false;
-            button.textContent = 'Se connecter';
+            done();
         }
     });
 
@@ -377,13 +443,26 @@
         $('#view').innerHTML = '';
         $('#drawer-form').innerHTML = '';
         $('#drawer-layer').hidden = true;
-        document.title = 'AutoLoc · Console de gestion';
+        state.profil = null;
+        document.title = 'AutoLoc · Location de véhicules';
         history.replaceState(null, '', location.pathname);
         showLogin();
     });
 
     // ------------------------------------------------------------------ Navigation
+    const CLIENT_ROUTES = {
+        louer: {title: 'Louer un véhicule', icon: 'car', render: () => renderCatalogue()},
+        locations: {title: 'Mes locations', icon: 'calendar', render: () => renderLocations()},
+        profil: {title: 'Mon profil', icon: 'user', render: () => renderProfil()}
+    };
+
     function renderNav() {
+        if (state.me.client) {
+            $('#nav').innerHTML = '<div class="nav-group">Espace client</div>'
+                + Object.entries(CLIENT_ROUTES).map(([key, r]) =>
+                    `<a href="#/${key}" data-route="${key}">${icon(r.icon)}<span>${r.title}</span></a>`).join('');
+            return;
+        }
         let html = '<div class="nav-group">Pilotage</div>'
             + `<a href="#/tableau-de-bord" data-route="tableau-de-bord">${icon('dashboard')}<span>Tableau de bord</span></a>`;
         for (const group of GROUPS) {
@@ -404,12 +483,17 @@
 
     function route() {
         if (!state.me) return;
-        const name = location.hash.replace(/^#\/?/, '') || 'tableau-de-bord';
-        state.route = RESOURCES[name] ? name : 'tableau-de-bord';
+        const name = location.hash.replace(/^#\/?/, '');
+        if (state.me.client) {
+            state.route = CLIENT_ROUTES[name] ? name : 'louer';
+        } else {
+            state.route = RESOURCES[name] ? name : 'tableau-de-bord';
+        }
         document.querySelectorAll('#nav a').forEach((a) => a.classList.toggle('active', a.dataset.route === state.route));
         $('#app').classList.remove('nav-open');
         window.scrollTo({top: 0});
-        if (state.route === 'tableau-de-bord') renderDashboard();
+        if (state.me.client) CLIENT_ROUTES[state.route].render();
+        else if (state.route === 'tableau-de-bord') renderDashboard();
         else renderResource(state.route);
     }
     window.addEventListener('hashchange', route);
@@ -433,7 +517,7 @@
 
     async function load(key, force = false) {
         if (!state.data[key] || force) {
-            state.data[key] = await api('GET', '/' + key);
+            state.data[key] = await api('GET', '/console/' + key);
             updateCounts();
         }
         return state.data[key];
@@ -458,7 +542,7 @@
         view.innerHTML = `<div class="kpis">${'<div class="panel kpi"><div class="skeleton"><div class="bone" style="width:40%"></div><div class="bone" style="width:60%;height:22px;margin-top:12px"></div></div></div>'.repeat(4)}</div>`;
         let s;
         try {
-            s = await api('GET', '/stats');
+            s = await api('GET', '/console/stats');
         } catch (err) { return handleError(err); }
         if (state.route !== 'tableau-de-bord') return;
 
@@ -631,7 +715,7 @@
             (res.deleteNote ? res.deleteNote + ' ' : '') + 'Cette action est définitive.');
         if (!ok) return;
         try {
-            await api('DELETE', `/${key}/${row.id}`);
+            await api('DELETE', `/console/${key}/${row.id}`);
             toast(`${res.singular.charAt(0).toUpperCase() + res.singular.slice(1)} supprimé${res.feminine ? 'e' : ''}.`);
             state.data = {};                 // related counts may have changed (cascade)
             await load(key, true);
@@ -646,7 +730,7 @@
         const res = RESOURCES[key];
         const admin = state.me.admin;
         const editing = row !== null;
-        drawerContext = {key, row};
+        drawerContext = admin ? {submit: (form) => saveResource(key, row, form)} : null;
         $('#drawer-kicker').textContent = res.title;
         $('#drawer-title').textContent = !admin ? `Fiche ${res.singular}`
             : editing ? `Modifier ${article(res)}${article(res).endsWith('’') ? '' : ' '}${res.singular}` : `${newWord(res)} ${res.singular}`;
@@ -736,48 +820,257 @@
         e.target.closest('.field')?.classList.remove('invalid');
     });
 
-    $('#drawer-form').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        if (!drawerContext || !state.me.admin) return;
-        const {key, row} = drawerContext;
+    /** Agency console: create or update an entity from the drawer form. */
+    async function saveResource(key, row, form) {
         const res = RESOURCES[key];
-        const form = e.currentTarget;
-        const errorBox = $('#drawer-error');
-
         // Client-side check of required fields (the server checks again)
         const missing = res.fields.filter((f) => f.required && f.type !== 'multi' && f.type !== 'boolean'
             && !form.querySelector(`[name="${f.key}"]`).value.trim());
         form.querySelectorAll('.field').forEach((el) => el.classList.remove('invalid'));
         if (missing.length) {
             missing.forEach((f) => form.querySelector(`[name="${f.key}"]`).closest('.field').classList.add('invalid'));
-            errorBox.textContent = 'Complétez les champs obligatoires : ' + missing.map((f) => f.label).join(', ') + '.';
-            errorBox.hidden = false;
-            return;
+            throw new ApiError(400, 'Complétez les champs obligatoires : ' + missing.map((f) => f.label).join(', ') + '.');
         }
+        const body = readForm(res, form);
+        if (row) await api('PUT', `/console/${key}/${row.id}`, {...body, id: row.id});
+        else await api('POST', `/console/${key}`, body);
+        closeLayer($('#drawer-layer'));
+        toast(row ? 'Modifications enregistrées.' : `${res.singular.charAt(0).toUpperCase() + res.singular.slice(1)} créé${res.feminine ? 'e' : ''}.`);
+        state.data = {};
+        await load(key, true);
+        if (state.route === key) renderRows();
+    }
 
-        const submit = $('#drawer-foot [type=submit]');
-        submit.disabled = true;
-        const text = submit.textContent;
-        submit.innerHTML = '<span class="spinner"></span> Enregistrement';
+    /** The drawer is shared: its context says what submitting does (console save or customer checkout). */
+    $('#drawer-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        if (!drawerContext) return;
+        const form = e.currentTarget;
+        const errorBox = $('#drawer-error');
+        const done = busy($('#drawer-foot [type=submit]'), 'Enregistrement');
         try {
-            const body = readForm(res, form);
-            if (row) await api('PUT', `/${key}/${row.id}`, {...body, id: row.id});
-            else await api('POST', `/${key}`, body);
-            closeLayer($('#drawer-layer'));
-            toast(row ? 'Modifications enregistrées.' : `${res.singular.charAt(0).toUpperCase() + res.singular.slice(1)} créé${res.feminine ? 'e' : ''}.`);
-            state.data = {};
-            await load(key, true);
-            if (state.route === key) renderRows();
+            errorBox.hidden = true;
+            await drawerContext.submit(form);
         } catch (err) {
             if (err.status === 401) return handleError(err);
             errorBox.textContent = err.message;
             errorBox.hidden = false;
             form.scrollTop = 0;
         } finally {
-            submit.disabled = false;
-            submit.textContent = text;
+            done();
         }
     });
+
+    // ------------------------------------------------------------------ Customer space
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const addDays = (isoDate, n) => { const d = parseDate(isoDate); d.setDate(d.getDate() + n); return iso(d); };
+    const search = {debut: null, fin: null, categorie: ''};
+
+    async function renderCatalogue() {
+        setTitle('Espace client', 'Louer un véhicule');
+        if (!search.debut || search.debut < today()) {
+            search.debut = addDays(today(), 1);
+            search.fin = addDays(today(), 3);
+        }
+        $('#view').innerHTML = `
+            <section class="panel search-panel">
+                <form id="search-form" class="search-grid" novalidate>
+                    <label class="field"><span>Départ</span><input type="date" name="debut" min="${today()}" value="${search.debut}" required></label>
+                    <label class="field"><span>Retour</span><input type="date" name="fin" min="${today()}" value="${search.fin}" required></label>
+                    <label class="field"><span>Catégorie</span><select name="categorie">
+                        <option value="">Toutes</option>
+                        ${(state.enums.CategorieVehicule ?? []).map((c) => `<option value="${c}" ${c === search.categorie ? 'selected' : ''}>${esc(label(c))}</option>`).join('')}
+                    </select></label>
+                    <button class="btn btn-primary" type="submit">Rechercher</button>
+                </form>
+            </section>
+            <div class="results-head"><h2 id="results-title"></h2><span class="muted" id="results-sub"></span></div>
+            <div class="offers" id="offers">${'<div class="panel offer skeleton"><div class="bone" style="width:60%"></div><div class="bone" style="width:40%;margin-top:10px"></div><div class="bone" style="height:30px;margin-top:40px"></div></div>'.repeat(3)}</div>`;
+
+        const form = $('#search-form');
+        form.addEventListener('change', (e) => {
+            if (e.target.name === 'debut' && form.fin.value < e.target.value) form.fin.value = e.target.value;
+            form.fin.min = form.debut.value;
+        });
+        form.addEventListener('submit', (e) => {
+            e.preventDefault();
+            search.debut = form.debut.value;
+            search.fin = form.fin.value;
+            search.categorie = form.categorie.value;
+            loadOffers();
+        });
+        loadOffers();
+    }
+
+    async function loadOffers() {
+        const params = new URLSearchParams({debut: search.debut, fin: search.fin});
+        if (search.categorie) params.set('categorie', search.categorie);
+        let offers;
+        try {
+            offers = await api('GET', '/client/vehicules?' + params);
+        } catch (err) {
+            $('#offers').innerHTML = '';
+            $('#results-title').textContent = 'Recherche impossible';
+            $('#results-sub').textContent = err.message;
+            return;
+        }
+        if (state.route !== 'louer') return;
+        const nb = days(search.debut, search.fin);
+        $('#results-title').textContent = `${offers.length} véhicule${offers.length > 1 ? 's' : ''} disponible${offers.length > 1 ? 's' : ''}`;
+        $('#results-sub').textContent = `du ${fmtDate(search.debut)} au ${fmtDate(search.fin)} · ${nb} jour${nb > 1 ? 's' : ''}`;
+        if (!offers.length) {
+            $('#offers').innerHTML = `<div class="panel empty full-row"><h3>Aucun véhicule disponible</h3>
+                <p>Essayez d’autres dates ou une autre catégorie.</p></div>`;
+            return;
+        }
+        $('#offers').innerHTML = offers.map((o, i) => `
+            <article class="panel offer" style="--i:${i}">
+                <div class="offer-head">
+                    <div><h3>${esc(o.marque)} ${esc(o.modele)}</h3>
+                    <div class="muted">${o.agence ? esc(o.agence) : 'Agence à confirmer'}</div></div>
+                    <span class="badge plain">${esc(label(o.categorie))}</span>
+                </div>
+                <div class="offer-tags">${o.equipements.length ? o.equipements.map((e) => `<span class="tag">${esc(e)}</span>`).join('') : '<span class="muted">Sans équipement en option</span>'}</div>
+                <div class="offer-foot">
+                    <div><div class="price">${fmtMoney(o.total)}</div>
+                    <div class="muted">${fmtMoney(o.tarifJournalier)} / jour</div></div>
+                    <button class="btn btn-primary" type="button" data-rent="${o.id}">Louer</button>
+                </div>
+            </article>`).join('');
+        $('#offers').onclick = (e) => {
+            const btn = e.target.closest('[data-rent]');
+            if (btn) openCheckout(offers.find((o) => String(o.id) === btn.dataset.rent));
+        };
+    }
+
+    function openCheckout(offer) {
+        $('#drawer-kicker').textContent = 'Réservation';
+        $('#drawer-title').textContent = `${offer.marque} ${offer.modele}`;
+        const nb = offer.nbJours;
+        $('#drawer-form').innerHTML = `
+            <p class="form-error full" id="drawer-error" hidden></p>
+            <dl class="summary full">
+                <div><dt>Véhicule</dt><dd>${esc(offer.marque)} ${esc(offer.modele)} · <span class="mono">${esc(offer.immatriculation)}</span></dd></div>
+                <div><dt>Agence de retrait</dt><dd>${esc(offer.agence ?? 'À confirmer')}${offer.ville ? ', ' + esc(offer.ville) : ''}</dd></div>
+                <div><dt>Départ</dt><dd>${fmtDate(search.debut)}</dd></div>
+                <div><dt>Retour</dt><dd>${fmtDate(search.fin)}</dd></div>
+                <div><dt>Tarif</dt><dd>${fmtMoney(offer.tarifJournalier)} × ${nb} jour${nb > 1 ? 's' : ''}</dd></div>
+                <div class="total"><dt>Total à payer</dt><dd>${fmtMoney(offer.total)}</dd></div>
+            </dl>
+            <label class="field full"><span>Mode de paiement<span class="req">*</span></span>
+                <select name="modePaiement" required>
+                    <option value="" disabled selected>Choisir…</option>
+                    ${(state.enums.ModePaiement ?? []).map((m) => `<option value="${m}">${esc(label(m))}</option>`).join('')}
+                </select></label>
+            <label class="check full"><input type="checkbox" name="conditions">
+                <span>J’accepte les conditions de location et je présenterai mon permis au retrait du véhicule.</span></label>
+            <div class="info-box">Le paiement confirme la réservation. Le contrat est créé automatiquement et reste
+                consultable dans « Mes locations ». Annulation possible jusqu’à la veille du départ.</div>`;
+        $('#drawer-foot').innerHTML = `<button class="btn btn-ghost" type="button" data-close>Annuler</button>
+            <button class="btn btn-primary" type="submit" form="drawer-form">Payer ${fmtMoney(offer.total)}</button>`;
+        drawerContext = {
+            submit: async (form) => {
+                if (!form.modePaiement.value) throw new ApiError(400, 'Choisissez un mode de paiement.');
+                if (!form.conditions.checked) throw new ApiError(400, 'Acceptez les conditions de location pour continuer.');
+                const location = await api('POST', '/client/locations', {
+                    vehiculeId: offer.id, dateDebut: search.debut, dateFin: search.fin, modePaiement: form.modePaiement.value
+                });
+                closeLayer($('#drawer-layer'));
+                toast(`Location R-${location.id} confirmée. Paiement de ${fmtMoney(location.montantPaye)} enregistré.`);
+                window.location.hash = '#/locations';
+            }
+        };
+        openLayer($('#drawer-layer'));
+    }
+
+    async function renderLocations() {
+        setTitle('Espace client', 'Mes locations');
+        $('#view').innerHTML = `<section class="panel"><div class="table-wrap"><table><tbody>${skeletonRows(5)}</tbody></table></div></section>`;
+        let rows;
+        try {
+            rows = await api('GET', '/client/locations');
+        } catch (err) { return handleError(err); }
+        if (state.route !== 'locations') return;
+        if (!rows.length) {
+            $('#view').innerHTML = `<section class="panel empty"><h3>Aucune location pour le moment</h3>
+                <p>Choisissez vos dates et réservez un véhicule en quelques clics.</p>
+                <a class="btn btn-primary" href="#/louer">Louer un véhicule</a></section>`;
+            return;
+        }
+        const upcoming = rows.filter((r) => r.annulable).length;
+        $('#view').innerHTML = `
+            <div class="toolbar"><span class="total">${rows.length} location(s) · ${upcoming} à venir</span>
+                <span class="spacer"></span><a class="btn btn-primary" href="#/louer">Nouvelle location</a></div>
+            <section class="panel"><div class="table-wrap"><table>
+                <thead><tr><th>N°</th><th>Véhicule</th><th>Période</th><th class="right">Montant</th><th>Paiement</th><th>Statut</th><th></th></tr></thead>
+                <tbody>${rows.map((r, i) => `
+                    <tr style="--i:${i}">
+                        <td><span class="mono">R-${r.id}</span>${r.contratId ? `<span class="secondary mono">C-${r.contratId}</span>` : ''}</td>
+                        <td>${two(r.vehicule, `${label(r.categorie)} · ${r.immatriculation}`)}</td>
+                        <td>${two(`${fmtDate(r.dateDebut)} → ${fmtDate(r.dateFin)}`, `${r.nbJours} jour(s)${r.agence ? ' · ' + r.agence : ''}`)}</td>
+                        <td class="right"><span class="num primary">${fmtMoney(r.montantTotal)}</span></td>
+                        <td>${r.modePaiement ? two(fmtMoney(r.montantPaye), label(r.modePaiement)) : dash}</td>
+                        <td>${pill(r.statut)}</td>
+                        <td class="actions-visible">${r.annulable ? `<button class="btn btn-ghost btn-sm btn-link-danger" type="button" data-cancel-loc="${r.id}">Annuler</button>` : ''}</td>
+                    </tr>`).join('')}</tbody>
+            </table></div></section>`;
+        $('#view').onclick = async (e) => {
+            const btn = e.target.closest('[data-cancel-loc]');
+            if (!btn) return;
+            const ok = await confirmDialog(`Annuler la location R-${btn.dataset.cancelLoc} ?`,
+                'Le véhicule sera remis à disposition sur ces dates. Le remboursement est traité par l’agence.',
+                'Annuler la location');
+            if (!ok) return;
+            try {
+                await api('POST', `/client/locations/${btn.dataset.cancelLoc}/annulation`);
+                toast('Location annulée.');
+                renderLocations();
+            } catch (err) { handleError(err); }
+        };
+    }
+
+    async function renderProfil() {
+        setTitle('Espace client', 'Mon profil');
+        let p;
+        try {
+            p = await api('GET', '/client/profil');
+        } catch (err) { return handleError(err); }
+        if (state.route !== 'profil') return;
+        $('#view').innerHTML = `
+            <section class="panel profile">
+                <div class="panel-head"><h3>Informations personnelles</h3>
+                    <span class="muted">Client depuis le ${fmtDate(p.dateInscription)} · ${p.nbLocations} location(s)</span></div>
+                <form id="profil-form" class="panel-body form-grid" novalidate>
+                    <label class="field"><span>Prénom<span class="req">*</span></span><input name="prenom" maxlength="50" value="${esc(p.prenom)}" required></label>
+                    <label class="field"><span>Nom<span class="req">*</span></span><input name="nom" maxlength="50" value="${esc(p.nom)}" required></label>
+                    <label class="field"><span>Email</span><input value="${esc(p.email)}" disabled><span class="help">Identifiant de connexion</span></label>
+                    <label class="field"><span>Téléphone</span><input name="telephone" type="tel" maxlength="20" value="${esc(p.telephone ?? '')}"></label>
+                    <label class="field"><span>N° de permis</span><input class="mono" value="${esc(p.numPermis)}" disabled>
+                        <span class="help">Pour le modifier, contactez votre agence</span></label>
+                    <p class="form-error full" id="profil-error" hidden></p>
+                    <div class="full form-actions"><button class="btn btn-primary" type="submit">Enregistrer</button></div>
+                </form>
+            </section>`;
+        $('#profil-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const form = e.currentTarget;
+            const err = $('#profil-error');
+            const done = busy(form.querySelector('[type=submit]'), 'Enregistrement');
+            try {
+                const updated = await api('PUT', '/client/profil',
+                    {prenom: form.prenom.value, nom: form.nom.value, telephone: form.telephone.value});
+                err.hidden = true;
+                $('#user-name').textContent = `${updated.prenom} ${updated.nom}`;
+                toast('Profil mis à jour.');
+            } catch (error) {
+                if (error.status === 401) return handleError(error);
+                err.textContent = error.message;
+                err.hidden = false;
+            } finally {
+                done();
+            }
+        });
+    }
 
     $('#drawer-layer').addEventListener('click', (e) => {
         if (e.target.closest('[data-close]')) closeLayer($('#drawer-layer'));

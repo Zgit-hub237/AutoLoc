@@ -1,85 +1,115 @@
-# Bonus : console web de gestion AutoLoc
+# Bonus : application web AutoLoc (espace client + console de l'agence)
 
-Une interface web pour manipuler tout le système : consulter, créer, modifier et supprimer
-les 9 entités, avec un tableau de bord. Elle est servie par l'application Spring Boot elle-même,
-sans outil supplémentaire (pas de Node, pas de framework front).
+Une interface web servie par l'application Spring Boot elle-même (HTML/CSS/JavaScript natifs, sans
+framework ni Node). Une seule page de connexion ; l'écran affiché dépend du rôle du compte.
 
 ## Lancer
 
 1. Démarrer MySQL dans XAMPP.
 2. Lancer `AutolocApiApplication` dans IntelliJ (ou `./mvnw spring-boot:run`).
-3. Ouvrir **http://localhost:8080** dans le navigateur.
+3. Ouvrir **http://localhost:8080**.
 
-| Compte | Mot de passe | Droits dans la console |
+## Les trois rôles
+
+| Rôle | Qui | Connexion | Ce qu'il peut faire |
+|---|---|---|---|
+| `CLIENT` | un client de l'agence | son **email** + mot de passe choisi à l'inscription (stocké haché BCrypt en base) | rechercher un véhicule disponible, louer et payer, consulter et annuler ses locations, modifier son profil |
+| `ADMIN` | un gestionnaire de l'agence | identifiant interne | tout gérer dans la console : 9 entités, tableau de bord |
+| `USER` | un collaborateur en consultation (stagiaire, comptable…) | identifiant interne | voir la console **sans rien modifier** |
+
+Le compte `USER` (`student`) vient de l'atelier 2 : c'est lui qui démontre le **403** (« authentifié mais
+pas autorisé »). Dans l'application il a un sens métier : un accès en lecture seule à la gestion.
+
+Comptes de démonstration (profil `dev`, usage local uniquement, volontairement absents de l'écran de
+connexion) :
+
+| Compte | Mot de passe | Rôle |
 |---|---|---|
-| `admin` | `admin123` | tout : création, modification, suppression |
-| `student` | `student123` | consultation seule (boutons d'écriture masqués, et l'API répond 403) |
+| `camille.martin@example.com` | `client123` | CLIENT (créé par `DemoDataInitializer`) |
+| `admin` | `admin123` | ADMIN |
+| `student` | `student123` | USER |
+
+N'importe qui peut aussi créer un compte client avec « Créer un compte ».
+
+## Parcours client
+
+1. **Inscription** (`POST /api/client/inscription`, ouvert aux anonymes) : identité, email, permis,
+   mot de passe (8 caractères minimum). Email et permis uniques.
+2. **Recherche** : dates de départ et de retour, catégorie. Seuls les véhicules **disponibles** sont
+   proposés : pas en maintenance, et sans réservation (non annulée) qui chevauche la période.
+   Le prix total est calculé : tarif journalier × nombre de jours (bornes incluses).
+3. **Louer** : récapitulatif, mode de paiement, acceptation des conditions, « Payer ».
+   Le serveur crée en **une transaction** : la réservation (CONFIRMEE), le contrat (validé) et le
+   paiement du montant total. Un seul `save(reservation)` suffit grâce aux cascades
+   `Reservation → Contrat (ALL)` puis `Contrat → Paiement (ALL)`.
+4. **Mes locations** : historique avec contrat, montant payé et statut. Annulation possible tant que la
+   location n'a pas commencé (statut ANNULEE, contrat invalidé, véhicule de nouveau disponible).
+5. **Mon profil** : prénom, nom, téléphone modifiables ; email et permis non modifiables.
+
+Règles vérifiées côté serveur : dates dans le futur, fin après début, 60 jours maximum, véhicule
+disponible (sinon **409**), une location ne peut être vue ou annulée que par **son** client (sinon 404).
+Le client connecté est toujours lu dans l'authentification (`Authentication.getName()`), jamais dans la
+requête : impossible d'agir au nom d'un autre client.
 
 ## Architecture
 
 ```
-navigateur ── index.html + css/app.css + js/app.js    (src/main/resources/static, publics)
+navigateur ── index.html + css/app.css + js/app.js     (src/main/resources/static, publics)
      │  fetch + en-tête Authorization: Basic ...
      ▼
-Spring Security ── GET /api/console/**  → USER ou ADMIN
-                └─ POST/PUT/DELETE      → ADMIN uniquement
+Spring Security
+  ├─ POST /api/client/inscription   → tout le monde
+  ├─ /api/client/**                 → CLIENT
+  ├─ /api/me, /api/enums            → tout utilisateur connecté
+  ├─ GET /api/console/**            → USER ou ADMIN
+  └─ POST/PUT/DELETE /api/console/** → ADMIN
      ▼
-fr.ece.autoloc.console
-  ├── CrudResource<E, D>       base générique : list, get, create, update, delete (@Transactional)
-  ├── VehiculeResource, ...    une classe par entité : DTO (record) + conversion + règles
-  ├── ConsoleController        /me (utilisateur connecté), /enums, /stats (tableau de bord)
-  └── ConsoleExceptionHandler  erreurs → JSON {"message": "..."} lisible dans l'interface
+fr.ece.autoloc.espaceclient   EspaceClientController → EspaceClientService (@Service, @Transactional)
+fr.ece.autoloc.console        CrudResource<E, D> + une ressource par entité, ConsoleController (/stats)
+fr.ece.autoloc.web.controller SessionController (/me, /enums)
      ▼
-repository (JpaRepository) ── Hibernate ── MySQL
+repository (JpaRepository, méthodes dérivées, @Query de chevauchement) ── Hibernate ── MySQL
 ```
 
-### Routes de l'API
+### Comptes : deux sources dans un seul `UserDetailsService`
 
-Pour chaque ressource `agences`, `employes`, `equipements`, `vehicules`, `maintenances`, `clients`,
-`reservations`, `contrats`, `paiements` :
+`SecurityConfig.userDetailsService` cherche d'abord le personnel en mémoire (`admin`, `student`), puis
+un client en base via `ClientRepository.findByEmailIgnoreCase`. Un client trouvé avec un mot de passe
+devient un `UserDetails` avec le rôle `CLIENT`. C'est la réponse concrète à la question de l'atelier 2
+« que faudrait-il pour charger les utilisateurs depuis MySQL ? ». Un client créé au guichet par l'agence
+(sans mot de passe) n'a pas d'accès en ligne.
 
-| Méthode | Route | Effet | Code |
-|---|---|---|---|
-| GET | `/api/console/{ressource}` | liste | 200 |
-| GET | `/api/console/{ressource}/{id}` | détail | 200 / 404 |
-| POST | `/api/console/{ressource}` | création | 201 / 400 / 409 |
-| PUT | `/api/console/{ressource}/{id}` | modification | 200 / 400 / 404 / 409 |
-| DELETE | `/api/console/{ressource}/{id}` | suppression | 204 / 404 / 409 |
+### Routes de l'espace client
 
-Plus `GET /api/console/me`, `/api/console/enums` et `/api/console/stats`.
+| Méthode | Route | Effet |
+|---|---|---|
+| POST | `/api/client/inscription` | créer un compte (201, 400, 409) |
+| GET / PUT | `/api/client/profil` | lire / modifier son profil |
+| GET | `/api/client/vehicules?debut=&fin=&categorie=` | véhicules disponibles et prix |
+| GET | `/api/client/locations` | ses locations |
+| POST | `/api/client/locations` | louer et payer (201, 400, 409) |
+| POST | `/api/client/locations/{id}/annulation` | annuler (200, 404, 409) |
+
+### Routes de la console (ADMIN / USER)
+
+Pour `agences`, `employes`, `equipements`, `vehicules`, `maintenances`, `clients`, `reservations`,
+`contrats`, `paiements` : `GET /api/console/{ressource}`, `GET /{id}`, `POST`, `PUT /{id}`, `DELETE /{id}`.
+Plus `GET /api/console/stats` pour le tableau de bord.
 
 ## Choix techniques (à savoir expliquer)
 
-- **DTO plutôt qu'entités** : les entités ont des associations LAZY et bidirectionnelles. Les sérialiser
-  directement provoquerait des `LazyInitializationException` (avec `open-in-view=false`) ou des boucles
-  infinies. Chaque ressource convertit l'entité en `record` plat (associations exposées par leur id et
-  un libellé), **à l'intérieur de la transaction**.
-- **Associations reçues par id** : le formulaire envoie `agenceId`, `equipementIds`… ; le serveur charge
-  l'entité correspondante (`findById`) et l'affecte au **côté propriétaire**.
-- **Cascade visible dans l'interface** : supprimer une réservation supprime son contrat puis ses paiements
-  (`CascadeType.ALL` + `orphanRemoval`) ; supprimer une agence ou un client encore utilisé est refusé
-  (aucune cascade de suppression) avec un message 409 clair. Le texte de confirmation l'indique.
-- **Cas particuliers gérés** :
-  - `Equipement` est le côté inverse du `@ManyToMany` : avant suppression, on le retire des véhicules
-    (sinon la clé étrangère de `vehicule_equipement` bloque).
-  - `Contrat` : avant suppression, on le détache de sa réservation, sinon la cascade ALL de
-    `Reservation.contrat` le ré-enregistrerait au flush.
-  - `Paiement` : on modifie seulement le côté propriétaire (`setContrat`), car le retirer de la collection
-    de l'ancien contrat déclencherait `orphanRemoval`.
-- **`saveAndFlush` / `flush`** : force l'envoi du SQL dans la méthode, pour transformer immédiatement une
-  violation de contrainte (doublon, clé étrangère) en réponse 409 compréhensible.
-- **Sécurité** : l'API reste en HTTP Basic, sans session. L'en-tête `X-Requested-With: XMLHttpRequest`
-  demande à Spring Security un simple 401, sans fenêtre de connexion du navigateur.
-- **Interface** : HTML/CSS/JavaScript natifs. Les écrans sont générés à partir d'une description de chaque
-  entité (colonnes, champs, types) dans `js/app.js` ; les valeurs des listes déroulantes d'enums viennent
-  du serveur (`/enums`), elles restent donc toujours alignées sur le code Java.
-
-## Fonctionnalités
-
-- Tableau de bord : indicateurs, état de la flotte, réservations par statut, réservations à venir,
-  maintenances en cours.
-- Pour chaque entité : tableau triable, recherche, filtre par statut / rôle / mode, formulaire latéral
-  de création et de modification, suppression avec confirmation.
-- Sélection des équipements d'un véhicule (`@ManyToMany`), suivi de l'encaissement d'un contrat.
-- Interface adaptée au rôle : consultation seule pour `student`.
-- Utilisable sur mobile (menu repliable).
+- **DTO plutôt qu'entités** : les entités ont des associations LAZY et bidirectionnelles ; les sérialiser
+  provoquerait des `LazyInitializationException` (`open-in-view=false`) ou des boucles infinies.
+  Les données sont converties en `record` à l'intérieur de la transaction.
+- **Couche service pour l'espace client** : les règles métier (disponibilité, prix, annulation) sont dans
+  `EspaceClientService`, annoté `@Transactional` ; le contrôleur ne fait que recevoir et répondre.
+- **Cascade visible** : louer persiste 3 entités en un `save` ; supprimer une réservation dans la console
+  supprime son contrat puis ses paiements ; supprimer une agence ou un client encore utilisé est refusé (409).
+- **Cas particuliers de la console** : `Equipement` (côté inverse du `@ManyToMany`) est retiré des véhicules
+  avant suppression ; `Contrat` est détaché de sa réservation avant suppression ; `Paiement` change de
+  contrat par le seul côté propriétaire (sinon `orphanRemoval` le supprimerait).
+- **Mot de passe** : jamais renvoyé par l'API ni affiché ; seul le hash BCrypt est stocké
+  (colonne `client.mot_de_passe`, ajoutée par `ddl-auto=update` en dev).
+- **Sécurité** : HTTP Basic sans session (`STATELESS`), donc CSRF ignoré sur `/api/**`. L'en-tête
+  `X-Requested-With: XMLHttpRequest` évite la fenêtre de connexion du navigateur. En production :
+  HTTPS obligatoire, et plutôt des jetons (JWT).
